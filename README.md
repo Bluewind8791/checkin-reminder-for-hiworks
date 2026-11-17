@@ -16,7 +16,7 @@
 
 ## 설치
 
-[Releases](https://github.com/Bluewind8791/checkin-reminder-for-hiworks/releases/latest)에서 `app-release.apk`를 받아 설치합니다. Play 스토어 밖의 앱이라 「출처를 알 수 없는 앱 설치」를 허용해야 합니다.
+휴대폰에서 [설치 페이지](https://checkin.bluewind91.com/)를 열어 APK를 받거나, [Releases](https://github.com/Bluewind8791/checkin-reminder-for-hiworks/releases/latest)에서 `app-release.apk`를 받아 설치합니다. Play 스토어 밖의 앱이라 「출처를 알 수 없는 앱 설치」를 허용해야 합니다.
 
 처음 열면 앱 안에서 하이웍스에 로그인하고, 알림 권한을 허용하세요.
 
