@@ -7,17 +7,12 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeParseException
 
-/**
- * One check alarm. Stage 1 rings [firstMinutes] before [start] on [date], stages 2 and 3 ring 5 and 1 minutes
- * before.
- */
+/** One check alarm, which rings [minutesBefore] minutes before [start] on [date]. */
 data class CheckAlarm(
     val date: LocalDate,
-    val stage: Int,
     val start: LocalTime,
-    val firstMinutes: Long = AlarmPlan.DEFAULT_FIRST_MINUTES,
+    val minutesBefore: Long,
 ) {
-    val minutesBefore: Long get() = if (stage == 1) firstMinutes else AlarmPlan.LATER_MINUTES[stage - 2]
     val at: LocalDateTime get() = date.atTime(start).minusMinutes(minutesBefore)
 }
 
@@ -47,17 +42,13 @@ data class StageOutcome(val notice: Notice?, val then: Then)
 
 /** Pure alarm planning. */
 object AlarmPlan {
-    const val STAGES = 3
-
-    /** Stages 2 and 3. */
-    val LATER_MINUTES = listOf(5L, 1L)
-
-    /** What the user can pick for stage 1. Each is more than stage 2's 5 minutes. */
-    val FIRST_MINUTES_CHOICES = listOf(10L, 15L, 20L, 30L, 60L)
-    const val DEFAULT_FIRST_MINUTES = 10L
+    /** What the user can set for one alert, in minutes before the start time. */
+    val MINUTES_RANGE = 1L..60L
+    const val MAX_ALERTS = 5
+    val DEFAULT_ALERTS = listOf(10L, 5L, 1L)
 
     /**
-     * The first check alarm after [now]: the earliest stage that is still ahead, on the first day
+     * The first check alarm after [now]: the earliest of [alerts] that is still ahead, on the first day
      * after [doneDate] that has a start time. Null when the cached days have none.
      */
     fun next(
@@ -65,25 +56,26 @@ object AlarmPlan {
         manualStart: LocalTime?,
         now: LocalDateTime,
         doneDate: LocalDate?,
-        firstMinutes: Long = DEFAULT_FIRST_MINUTES,
+        alerts: List<Long> = DEFAULT_ALERTS,
     ): CheckAlarm? {
         for (day in days.sortedBy { it.workDate }) {
             val date = parseDate(day.workDate) ?: continue
             if (date < now.toLocalDate() || (doneDate != null && date <= doneDate)) continue
             val expected = Decider.expectedStart(day, manualStart) as? ExpectedStart.At ?: continue
-            firstStageAfter(CheckAlarm(date, 1, expected.time, firstMinutes), now)?.let { return it }
+            nextStage(date, expected.time, alerts, now)?.let { return it }
         }
         return null
     }
 
-    /** The first stage on [date] for [start] that rings after [now]. Null when every stage is past. */
-    fun nextStage(date: LocalDate, start: LocalTime, firstMinutes: Long, now: LocalDateTime): CheckAlarm? =
-        firstStageAfter(CheckAlarm(date, 1, start, firstMinutes), now)
+    /** The first of [alerts] on [date] for [start] that rings after [now]. Null when every alert is past. */
+    fun nextStage(date: LocalDate, start: LocalTime, alerts: List<Long>, now: LocalDateTime): CheckAlarm? =
+        alerts.sortedDescending().map { CheckAlarm(date, start, it) }.firstOrNull { it.at > now }
 
     /** What to do after the check of [alarm] gave [result]. */
-    fun afterCheck(alarm: CheckAlarm, result: ApiResult<Decision>, now: LocalDateTime): StageOutcome {
-        val later = if (alarm.stage < STAGES) alarm.copy(stage = alarm.stage + 1) else null
-        val goOn = later?.let { firstStageAfter(it, now) }?.let { Then.Stage(it) } ?: Then.DayDone
+    fun afterCheck(alarm: CheckAlarm, alerts: List<Long>, result: ApiResult<Decision>, now: LocalDateTime): StageOutcome {
+        // Only the alerts after this one. A late alarm skips the alerts it missed.
+        val later = nextStage(alarm.date, alarm.start, alerts.filter { it < alarm.minutesBefore }, now)
+        val goOn = later?.let { Then.Stage(it) } ?: Then.DayDone
         return when (result) {
             ApiResult.SessionExpired -> StageOutcome(Notice.Login, Then.Stop)
             is ApiResult.Failed -> StageOutcome(Notice.Failed(network = result.reason.startsWith("network")), goOn)
@@ -95,10 +87,6 @@ object AlarmPlan {
             }
         }
     }
-
-    /** [from] or a later stage of the same day, whichever is first after [now]. Skips stages a late alarm missed. */
-    private fun firstStageAfter(from: CheckAlarm, now: LocalDateTime): CheckAlarm? =
-        (from.stage..STAGES).map { from.copy(stage = it) }.firstOrNull { it.at > now }
 
     private fun parseDate(value: String): LocalDate? = try {
         LocalDate.parse(value)

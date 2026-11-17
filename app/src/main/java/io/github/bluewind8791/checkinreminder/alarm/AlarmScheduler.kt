@@ -20,9 +20,8 @@ object AlarmScheduler {
     const val ACTION_CHECK = "io.github.bluewind8791.checkinreminder.CHECK"
     const val ACTION_KEEPALIVE = "io.github.bluewind8791.checkinreminder.KEEPALIVE"
     private const val EXTRA_DATE = "date"
-    private const val EXTRA_STAGE = "stage"
     private const val EXTRA_START = "start"
-    private const val EXTRA_FIRST_MINUTES = "first_minutes"
+    private const val EXTRA_MINUTES = "minutes_before"
     private const val TAG = "AlarmScheduler"
 
     /** `setAlarmClock`: not rate-limited in Doze, and wakes the device. Returns false without the permission. */
@@ -34,9 +33,8 @@ object AlarmScheduler {
         )
         val intent = intent(context, ACTION_CHECK)
             .putExtra(EXTRA_DATE, alarm.date.toString())
-            .putExtra(EXTRA_STAGE, alarm.stage)
             .putExtra(EXTRA_START, alarm.start.toString())
-            .putExtra(EXTRA_FIRST_MINUTES, alarm.firstMinutes)
+            .putExtra(EXTRA_MINUTES, alarm.minutesBefore)
         manager.setAlarmClock(AlarmManager.AlarmClockInfo(millis(alarm.at), show), pending(context, intent))
         return true
     }
@@ -65,11 +63,10 @@ object AlarmScheduler {
     fun checkAlarm(intent: Intent): CheckAlarm? {
         val date = intent.getStringExtra(EXTRA_DATE) ?: return null
         val start = intent.getStringExtra(EXTRA_START) ?: return null
-        val stage = intent.getIntExtra(EXTRA_STAGE, 0).takeIf { it in 1..AlarmPlan.STAGES } ?: return null
-        // An alarm set before this extra existed has none: it was set with the default.
-        val firstMinutes = intent.getLongExtra(EXTRA_FIRST_MINUTES, AlarmPlan.DEFAULT_FIRST_MINUTES)
+        // An alarm set by a version before this extra has none. The app update replans it before it rings.
+        val minutes = intent.getLongExtra(EXTRA_MINUTES, 0).takeIf { it in AlarmPlan.MINUTES_RANGE } ?: return null
         return try {
-            CheckAlarm(LocalDate.parse(date), stage, LocalTime.parse(start), firstMinutes)
+            CheckAlarm(LocalDate.parse(date), LocalTime.parse(start), minutes)
         } catch (e: DateTimeParseException) {
             null
         }

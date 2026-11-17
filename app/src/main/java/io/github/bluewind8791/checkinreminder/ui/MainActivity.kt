@@ -13,17 +13,25 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -39,9 +47,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import io.github.bluewind8791.checkinreminder.alarm.AlarmWork
 import io.github.bluewind8791.checkinreminder.data.CookieStore
@@ -53,6 +71,7 @@ import io.github.bluewind8791.checkinreminder.domain.CheckResult
 import io.github.bluewind8791.checkinreminder.domain.ExpectedStart
 import io.github.bluewind8791.checkinreminder.domain.checkNow
 import io.github.bluewind8791.checkinreminder.ui.theme.AppTheme
+import io.github.bluewind8791.checkinreminder.ui.theme.JetBrainsMono
 import io.github.bluewind8791.checkinreminder.ui.theme.Palette
 import java.time.LocalDate
 import java.time.LocalTime
@@ -92,7 +111,7 @@ private fun MainScreen() {
     var busy by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
     var editStart by remember { mutableStateOf(false) }
-    var editFirst by remember { mutableStateOf(false) }
+    var editAlerts by remember { mutableStateOf(false) }
 
     fun check() {
         if (busy) return
@@ -178,14 +197,14 @@ private fun MainScreen() {
                     today,
                     checkedAt,
                     settings.manualStart != null,
-                    settings.firstMinutes,
+                    settings.alerts,
                     onRelogin = openLogin,
                 )
             }
             checkedAt?.let { CommentLine("마지막 확인 ${it.format(DateTimeFormatter.ofPattern("HH:mm:ss"))}", Palette.textFaint) }
             if (loggedIn == true) {
                 Spacer(Modifier.height(8.dp))
-                AlarmLines(settings, onEditStart = { editStart = true }, onEditFirst = { editFirst = true })
+                AlarmLines(settings, onEditStart = { editStart = true }, onEditAlerts = { editAlerts = true })
             }
         }
         Row(
@@ -246,14 +265,14 @@ private fun MainScreen() {
         )
     }
 
-    if (editFirst) {
-        FirstMinutesDialog(
-            current = settings.firstMinutes,
-            onDismiss = { editFirst = false },
-            onPick = { minutes ->
-                editFirst = false
+    if (editAlerts) {
+        AlertsDialog(
+            current = settings.alerts,
+            onDismiss = { editAlerts = false },
+            onSave = { alerts ->
+                editAlerts = false
                 scope.launch {
-                    settingsStore.setFirstMinutes(minutes)
+                    settingsStore.setAlerts(alerts)
                     AlarmWork.replan(context.applicationContext)
                 }
             },
@@ -262,10 +281,10 @@ private fun MainScreen() {
 }
 
 /**
- * The start time and first alarm settings, the next check alarm, and the last background call.
+ * The start time and alert settings, the next check alarm, and the last background call.
  */
 @Composable
-private fun AlarmLines(settings: Settings, onEditStart: () -> Unit, onEditFirst: () -> Unit) {
+private fun AlarmLines(settings: Settings, onEditStart: () -> Unit, onEditAlerts: () -> Unit) {
     val manual = settings.manualStart
     AssignLine(
         "startTime",
@@ -275,11 +294,11 @@ private fun AlarmLines(settings: Settings, onEditStart: () -> Unit, onEditFirst:
         modifier = Modifier.fillMaxWidth().clickable(onClick = onEditStart).padding(vertical = 12.dp),
     )
     AssignLine(
-        "firstAlert",
-        "T-${settings.firstMinutes}",
+        "alerts",
+        settings.alerts.joinToString(", ", "[", "]") { "T-$it" },
         Palette.number,
-        "첫 알림 · 눌러서 변경",
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onEditFirst).padding(vertical = 12.dp),
+        "눌러서 변경",
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onEditAlerts).padding(vertical = 12.dp),
     )
     val next = settings.nextCheck
     if (next != null) {
@@ -302,28 +321,142 @@ private fun AlarmLines(settings: Settings, onEditStart: () -> Unit, onEditFirst:
     }
 }
 
-/** Minutes before the start time of the first check alarm. */
+/** The alerts, in minutes before the start time. Adds and removes them, and saves them all at once. */
 @Composable
-private fun FirstMinutesDialog(current: Long, onDismiss: () -> Unit, onPick: (Long) -> Unit) {
+private fun AlertsDialog(current: List<Long>, onDismiss: () -> Unit, onSave: (List<Long>) -> Unit) {
+    var alerts by remember { mutableStateOf(current.sortedDescending()) }
+    // Null while the add field is closed.
+    var input by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("첫 알림 (이후 5분, 1분 전)", color = Palette.text) },
+        title = { Text("알림 시각", color = Palette.text) },
         text = {
             Column {
-                for (minutes in AlarmPlan.FIRST_MINUTES_CHOICES) {
-                    Text(
-                        "출근 ${minutes}분 전",
-                        modifier = Modifier.fillMaxWidth().clickable { onPick(minutes) }.padding(vertical = 12.dp),
-                        color = if (minutes == current) Palette.brand else Palette.textSub,
+                Text("출근 몇 분 전에 확인할지 · 최대 ${AlarmPlan.MAX_ALERTS}개", fontSize = 12.sp, color = Palette.textMuted)
+                Spacer(Modifier.height(8.dp))
+                for (minutes in alerts) {
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "T-$minutes",
+                            modifier = Modifier.width(56.dp),
+                            fontFamily = JetBrainsMono,
+                            fontWeight = FontWeight.Bold,
+                            color = Palette.text,
+                        )
+                        Text("출근 ${minutes}분 전", modifier = Modifier.weight(1f), fontSize = 14.sp, color = Palette.textSub)
+                        // The last alert stays: at least one is needed.
+                        val removable = alerts.size > 1
+                        Text(
+                            "✕",
+                            modifier = Modifier
+                                .clickable(enabled = removable) { alerts = alerts - minutes }
+                                .padding(12.dp),
+                            color = if (removable) Palette.textFaint else Palette.textDim,
+                        )
+                    }
+                }
+                val typed = input
+                if (typed == null) {
+                    val full = alerts.size >= AlarmPlan.MAX_ALERTS
+                    Row(
+                        Modifier.fillMaxWidth().clickable(enabled = !full) { input = "" }.heightIn(min = 48.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "＋ 알림 추가",
+                            modifier = Modifier.weight(1f),
+                            fontWeight = FontWeight.Bold,
+                            color = if (full) Palette.textDim else Palette.brand,
+                        )
+                        Text(
+                            "${alerts.size}/${AlarmPlan.MAX_ALERTS}" + if (full) " 최대" else "",
+                            fontFamily = JetBrainsMono,
+                            fontSize = 12.sp,
+                            color = Palette.textFaint,
+                        )
+                    }
+                    if (alerts.size == 1) {
+                        Text("알림은 1개 이상 있어야 합니다", fontSize = 12.sp, color = Palette.textMuted)
+                    }
+                } else {
+                    AddAlertField(
+                        typed,
+                        alerts,
+                        onChange = { input = it },
+                        onAdd = { minutes ->
+                            alerts = (alerts + minutes).sortedDescending()
+                            input = null
+                        },
                     )
                 }
             }
         },
         confirmButton = {
+            TextButton(onClick = { onSave(alerts) }) { Text("저장", color = Palette.brand) }
+        },
+        dismissButton = {
             TextButton(onClick = onDismiss) { Text("취소", color = Palette.textSub) }
         },
         containerColor = Palette.card,
     )
+}
+
+/** 「출근 [  ] 분 전 [추가]」, and why the number cannot be added. */
+@Composable
+private fun AddAlertField(input: String, alerts: List<Long>, onChange: (String) -> Unit, onAdd: (Long) -> Unit) {
+    val minutes = input.toLongOrNull()
+    val error = when {
+        minutes == null -> null
+        minutes !in AlarmPlan.MINUTES_RANGE ->
+            "${AlarmPlan.MINUTES_RANGE.first}~${AlarmPlan.MINUTES_RANGE.last}분 사이로 입력하세요"
+        minutes in alerts -> "이미 있는 알림입니다"
+        else -> null
+    }
+    val add = { if (minutes != null && error == null) onAdd(minutes) }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp)
+            .border(1.5.dp, Palette.brand, RoundedCornerShape(8.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("출근 ", fontSize = 14.sp, color = Palette.textSub)
+            BasicTextField(
+                value = input,
+                onValueChange = { onChange(it.filter(Char::isDigit).take(2)) },
+                modifier = Modifier.width(48.dp).focusRequester(focus),
+                textStyle = TextStyle(
+                    fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = Palette.text,
+                    textAlign = TextAlign.Center,
+                ),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { add() }),
+                singleLine = true,
+                cursorBrush = SolidColor(Palette.brand),
+                decorationBox = { field ->
+                    Column {
+                        field()
+                        Box(Modifier.fillMaxWidth().height(2.dp).background(Palette.brand))
+                    }
+                },
+            )
+            Text(" 분 전", modifier = Modifier.weight(1f), fontSize = 14.sp, color = Palette.textSub)
+            AppButton("추가", primary = true, onClick = add, enabled = minutes != null && error == null)
+        }
+        if (error != null) {
+            Text(error, fontSize = 12.sp, color = Palette.red)
+        }
+    }
 }
 
 /** Manual start time, or back to the work schedule. */
@@ -356,7 +489,7 @@ private fun CheckResultView(
     today: LocalDate,
     checkedAt: LocalTime?,
     manualStart: Boolean,
-    firstMinutes: Long,
+    alerts: List<Long>,
     onRelogin: () -> Unit,
 ) {
     val at = checkedAt?.format(TIME).orEmpty()
@@ -373,7 +506,7 @@ private fun CheckResultView(
                     } else {
                         CommentLine("다음 확인 · 오늘 $date")
                         val checkedAtTime = result.date.atTime(checkedAt ?: LocalTime.now())
-                        val next = AlarmPlan.nextStage(result.date, expected.time, firstMinutes, checkedAtTime)
+                        val next = AlarmPlan.nextStage(result.date, expected.time, alerts, checkedAtTime)
                         if (next != null) BigTime(next.at.format(TIME), Palette.text) else BigTime("--:--", Palette.textDim)
                     }
                     AssignLine("start", start, Palette.number, if (manualStart) "직접 입력" else "근무 일정")

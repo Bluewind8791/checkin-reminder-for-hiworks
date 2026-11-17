@@ -3,7 +3,6 @@ package io.github.bluewind8791.checkinreminder.data
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -23,8 +22,8 @@ private val Context.settingsDataStore by preferencesDataStore(name = "settings")
 data class Settings(
     /** The start time the user typed. Null means the work schedule's `plan_start_at`. */
     val manualStart: LocalTime? = null,
-    /** Minutes before the start time of the first check alarm. */
-    val firstMinutes: Long = AlarmPlan.DEFAULT_FIRST_MINUTES,
+    /** Minutes before the start time of each check alarm, largest first. */
+    val alerts: List<Long> = AlarmPlan.DEFAULT_ALERTS,
     /** The work schedule from the last call that returned one. */
     val days: List<CalendarDay> = emptyList(),
     /** The last date whose check alarms are over. */
@@ -47,7 +46,10 @@ class SettingsStore(context: Context) {
         if (time == null) it.remove(MANUAL_START) else it[MANUAL_START] = time.toString()
     }
 
-    suspend fun setFirstMinutes(minutes: Long) = dataStore.edit { it[FIRST_MINUTES] = minutes }
+    suspend fun setAlerts(alerts: List<Long>) = dataStore.edit {
+        it[ALERTS] = alerts.sortedDescending().joinToString(",")
+        it.remove(FIRST_MINUTES)
+    }
 
     suspend fun setDays(days: List<CalendarDay>) = dataStore.edit {
         it[DAYS] = json.encodeToString(DAYS_SERIALIZER, days)
@@ -58,14 +60,12 @@ class SettingsStore(context: Context) {
     suspend fun setNextCheck(alarm: CheckAlarm?) = dataStore.edit {
         if (alarm == null) {
             it.remove(NEXT_DATE)
-            it.remove(NEXT_STAGE)
             it.remove(NEXT_START)
-            it.remove(NEXT_FIRST_MINUTES)
+            it.remove(NEXT_MINUTES)
         } else {
             it[NEXT_DATE] = alarm.date.toString()
-            it[NEXT_STAGE] = alarm.stage
             it[NEXT_START] = alarm.start.toString()
-            it[NEXT_FIRST_MINUTES] = alarm.firstMinutes
+            it[NEXT_MINUTES] = alarm.minutesBefore
         }
     }
 
@@ -77,21 +77,23 @@ class SettingsStore(context: Context) {
     /** Clears everything except the user's own settings. Used by logout. */
     suspend fun clearSession() = dataStore.edit { prefs ->
         val manualStart = prefs[MANUAL_START]
+        val alerts = prefs[ALERTS]
         val firstMinutes = prefs[FIRST_MINUTES]
         prefs.clear()
         if (manualStart != null) prefs[MANUAL_START] = manualStart
+        if (alerts != null) prefs[ALERTS] = alerts
         if (firstMinutes != null) prefs[FIRST_MINUTES] = firstMinutes
     }
 
     private fun Preferences.toSettings() = Settings(
         manualStart = parse(this[MANUAL_START], LocalTime::parse),
-        firstMinutes = this[FIRST_MINUTES] ?: AlarmPlan.DEFAULT_FIRST_MINUTES,
+        alerts = alertsFrom(this[ALERTS], this[FIRST_MINUTES]),
         days = parse(this[DAYS]) { json.decodeFromString(DAYS_SERIALIZER, it) }.orEmpty(),
         doneDate = parse(this[DONE_DATE], LocalDate::parse),
         nextCheck = parse(this[NEXT_DATE], LocalDate::parse)?.let { date ->
-            val stage = this[NEXT_STAGE] ?: return@let null
             val start = parse(this[NEXT_START], LocalTime::parse) ?: return@let null
-            CheckAlarm(date, stage, start, this[NEXT_FIRST_MINUTES] ?: AlarmPlan.DEFAULT_FIRST_MINUTES)
+            val minutes = this[NEXT_MINUTES] ?: return@let null
+            CheckAlarm(date, start, minutes)
         },
         lastCallAt = parse(this[LAST_CALL_AT], LocalDateTime::parse),
         lastCallResult = this[LAST_CALL_RESULT],
@@ -103,17 +105,29 @@ class SettingsStore(context: Context) {
 
     private companion object {
         val MANUAL_START = stringPreferencesKey("manual_start")
+        val ALERTS = stringPreferencesKey("alerts")
+        /** The first alert of versions before [ALERTS], whose later alerts were always 5 and 1 minutes. */
         val FIRST_MINUTES = longPreferencesKey("first_minutes")
         val DAYS = stringPreferencesKey("days")
         val DONE_DATE = stringPreferencesKey("done_date")
         val NEXT_DATE = stringPreferencesKey("next_date")
-        val NEXT_STAGE = intPreferencesKey("next_stage")
         val NEXT_START = stringPreferencesKey("next_start")
-        val NEXT_FIRST_MINUTES = longPreferencesKey("next_first_minutes")
+        val NEXT_MINUTES = longPreferencesKey("next_minutes")
         val LAST_CALL_AT = stringPreferencesKey("last_call_at")
         val LAST_CALL_RESULT = stringPreferencesKey("last_call_result")
 
         val DAYS_SERIALIZER = ListSerializer(CalendarDay.serializer())
         val json = Json { ignoreUnknownKeys = true }
     }
+}
+
+/**
+ * The saved alerts, such as "10,5,1". Without them, the first alert [legacyFirst] of an older version
+ * followed by its fixed 5 and 1 minutes. The defaults when neither is there or the saved value does not parse.
+ */
+internal fun alertsFrom(saved: String?, legacyFirst: Long?): List<Long> {
+    if (saved != null) {
+        return saved.split(",").mapNotNull { it.toLongOrNull() }.ifEmpty { AlarmPlan.DEFAULT_ALERTS }
+    }
+    return if (legacyFirst != null) listOf(legacyFirst, 5L, 1L) else AlarmPlan.DEFAULT_ALERTS
 }

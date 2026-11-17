@@ -80,10 +80,10 @@ object AlarmWork {
         val client = client(context) ?: return@withLock stop(context, settings)
         val result = decide(client, settings, alarm)
         val now = LocalDateTime.now()
-        Log.i(TAG, "check stage ${alarm.stage}: ${label(result)}")
+        Log.i(TAG, "check T-${alarm.minutesBefore}: ${label(result)}")
         settings.setLastCall(now, label(result))
-        CallLog.append(context, now, "check${alarm.stage}", label(result))
-        val outcome = AlarmPlan.afterCheck(alarm, result, now)
+        CallLog.append(context, now, "checkT-${alarm.minutesBefore}", label(result))
+        val outcome = AlarmPlan.afterCheck(alarm, settings.read().alerts, result, now)
         outcome.notice?.let { Notifier.show(context, it) }
         when (val then = outcome.then) {
             is Then.Stage -> {
@@ -128,7 +128,7 @@ object AlarmWork {
 
     private suspend fun replan(context: Context, settings: SettingsStore) {
         val state = settings.read()
-        val next = AlarmPlan.next(state.days, state.manualStart, LocalDateTime.now(), state.doneDate, state.firstMinutes)
+        val next = AlarmPlan.next(state.days, state.manualStart, LocalDateTime.now(), state.doneDate, state.alerts)
         if (next != null && AlarmScheduler.setCheck(context, next)) {
             settings.setNextCheck(next)
         } else {
