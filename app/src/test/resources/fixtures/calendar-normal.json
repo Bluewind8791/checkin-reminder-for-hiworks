@@ -1,0 +1,42 @@
+{
+  "data": {
+    "user_no": 1,
+    "name": "테스트",
+    "lft": 1,
+    "priority": 1,
+    "user_work_data": [
+      {
+        "work_date": "2026-11-05",
+        "work_data_exists": "Y",
+        "day_off_type": 0,
+        "plan_exists": "N",
+        "rule_type": "RULE",
+        "except_flag": "N",
+        "rule_code": "정9",
+        "plan_work_hour": "08:00:00",
+        "plan_overwork_hour": "00:00:00",
+        "sum_plan_work_hour": "08:00:00",
+        "plan_start_at": "09:00",
+        "plan_end_at": "18:00",
+        "next_day": "N",
+        "start_at": "2026-11-05 08:48:57",
+        "start_status": 0,
+        "end_at": "2026-11-05 18:00:00",
+        "end_status": 2,
+        "work_hour": "08:00:00",
+        "overwork_hour": "00:00:00",
+        "night_work_hour": "00:00:00",
+        "sum_work_hour": "08:00:00"
+      }
+    ],
+    "working_type_no": 1,
+    "working_type_name": "개발직09",
+    "sum_total_work_hour": "08:00:00",
+    "sum_work_hour": "08:00:00",
+    "sum_overwork_hour": "00:00:00",
+    "sum_night_work_hour": "00:00:00",
+    "is_select_type": "N",
+    "sum_plan_work_hour": "16:00:00",
+    "sum_rest_hour": "00:00:00"
+  }
+}

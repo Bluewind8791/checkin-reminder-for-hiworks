@@ -1,0 +1,16 @@
+{
+  "data": {
+    "date": "2026-11-11",
+    "start_at": "0000-00-00 00:00:00",
+    "start_status": 2,
+    "enable_start": "Y",
+    "end_at": "0000-00-00 00:00:00",
+    "end_status": 2,
+    "enable_end": "N",
+    "work_status": "출근전",
+    "enable_etc": "Y",
+    "details": [],
+    "use_start_check": "Y",
+    "use_end_check": "Y"
+  }
+}

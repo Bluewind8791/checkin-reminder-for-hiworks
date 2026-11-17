@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Light only. The window background matches the Compose bg color. -->
+    <style name="Theme.CheckinReminder" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+    </style>
+
+    <color name="bg">#F6F8FA</color>
+</resources>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The app icon's alarm clock with "h", at full size and in one color. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <group
+        android:translateX="-22"
+        android:translateY="-23">
+        <path
+            android:pathData="M27.15,41.5 A31,31 0 0,1 38.5,30.15 M69.5,30.15 A31,31 0 0,1 80.85,41.5"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeLineCap="round"
+            android:strokeWidth="6" />
+        <path
+            android:pathData="M68.9,78.3 L70.6,80.75 M39.1,78.3 L37.4,80.75"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeLineCap="round"
+            android:strokeWidth="5" />
+        <path
+            android:pathData="M54,33 A24,24 0 1,1 54,81 A24,24 0 1,1 54,33"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="5" />
+        <path
+            android:pathData="M33.22,45 A24,24 0 0,1 54,33"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeLineCap="round"
+            android:strokeWidth="7" />
+        <path
+            android:pathData="M47,46 V68 M47,58 C47,54 50,51.5 54,51.5 C58,51.5 61,54 61,58 V68"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="5" />
+    </group>
+</vector>

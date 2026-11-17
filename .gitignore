@@ -1,0 +1,19 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+*.keystore
+*.jks
+measure/cookie.txt
+.kotlin/
+
+# Planning docs and measurements stay local (not published)
+PLAN.md
+DESIGN.md
+UI.md
+measure/

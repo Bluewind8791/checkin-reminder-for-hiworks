@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Hiworks blue, so the icon reads as a Hiworks companion. -->
+    <color name="ic_launcher_background">#FF0080DD</color>
+</resources>
