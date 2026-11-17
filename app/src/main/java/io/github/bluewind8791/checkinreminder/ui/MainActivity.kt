@@ -78,9 +78,6 @@ private val DATE = DateTimeFormatter.ofPattern("M월 d일 (E)", Locale.KOREAN)
 private val TIME = DateTimeFormatter.ofPattern("HH:mm")
 private val SHORT_DATE = DateTimeFormatter.ofPattern("M/d (E)", Locale.KOREAN)
 
-/** Minutes before the start time of the first check alarm. */
-private const val FIRST_ALARM_MINUTES = 10L
-
 @Composable
 private fun MainScreen() {
     val context = LocalContext.current
@@ -176,7 +173,14 @@ private fun MainScreen() {
                     CommentLine(if (busy) "확인하는 중" else "「지금 확인」을 누르세요")
                     BigTime("--:--", Palette.textDim)
                 }
-                else -> CheckResultView(current, today, checkedAt, settings.manualStart != null, onRelogin = openLogin)
+                else -> CheckResultView(
+                    current,
+                    today,
+                    checkedAt,
+                    settings.manualStart != null,
+                    settings.firstMinutes,
+                    onRelogin = openLogin,
+                )
             }
             checkedAt?.let { CommentLine("마지막 확인 ${it.format(DateTimeFormatter.ofPattern("HH:mm:ss"))}", Palette.textFaint) }
             if (loggedIn == true) {
@@ -352,6 +356,7 @@ private fun CheckResultView(
     today: LocalDate,
     checkedAt: LocalTime?,
     manualStart: Boolean,
+    firstMinutes: Long,
     onRelogin: () -> Unit,
 ) {
     val at = checkedAt?.format(TIME).orEmpty()
@@ -367,7 +372,9 @@ private fun CheckResultView(
                         BigTime(checkedInAt ?: "--:--", Palette.green)
                     } else {
                         CommentLine("다음 확인 · 오늘 $date")
-                        BigTime(expected.time.minusMinutes(FIRST_ALARM_MINUTES).format(TIME), Palette.text)
+                        val checkedAtTime = result.date.atTime(checkedAt ?: LocalTime.now())
+                        val next = AlarmPlan.nextStage(result.date, expected.time, firstMinutes, checkedAtTime)
+                        if (next != null) BigTime(next.at.format(TIME), Palette.text) else BigTime("--:--", Palette.textDim)
                     }
                     AssignLine("start", start, Palette.number, if (manualStart) "직접 입력" else "근무 일정")
                 }

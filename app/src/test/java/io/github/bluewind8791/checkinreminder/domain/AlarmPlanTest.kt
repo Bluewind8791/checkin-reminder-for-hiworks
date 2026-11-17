@@ -96,6 +96,23 @@ class AlarmPlanTest {
         assertEquals(CheckAlarm(today, 2, nine, 30), AlarmPlan.next(days, null, at(8, 40), null, 30))
     }
 
+    // nextStage
+
+    @Test
+    fun `nextStage uses the first alarm setting`() {
+        assertEquals(at(8, 40), AlarmPlan.nextStage(today, nine, 20, at(7, 0))?.at)
+    }
+
+    @Test
+    fun `nextStage skips a stage already past`() {
+        assertEquals(CheckAlarm(today, 2, nine, 20), AlarmPlan.nextStage(today, nine, 20, at(8, 45)))
+    }
+
+    @Test
+    fun `nextStage is null after the last stage`() {
+        assertNull(AlarmPlan.nextStage(today, nine, 20, at(8, 59)))
+    }
+
     // afterCheck
 
     private val first = CheckAlarm(today, 1, nine)

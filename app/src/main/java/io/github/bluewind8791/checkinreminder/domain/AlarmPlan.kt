@@ -76,6 +76,10 @@ object AlarmPlan {
         return null
     }
 
+    /** The first stage on [date] for [start] that rings after [now]. Null when every stage is past. */
+    fun nextStage(date: LocalDate, start: LocalTime, firstMinutes: Long, now: LocalDateTime): CheckAlarm? =
+        firstStageAfter(CheckAlarm(date, 1, start, firstMinutes), now)
+
     /** What to do after the check of [alarm] gave [result]. */
     fun afterCheck(alarm: CheckAlarm, result: ApiResult<Decision>, now: LocalDateTime): StageOutcome {
         val later = if (alarm.stage < STAGES) alarm.copy(stage = alarm.stage + 1) else null
