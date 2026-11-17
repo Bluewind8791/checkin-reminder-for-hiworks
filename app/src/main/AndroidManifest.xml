@@ -9,6 +9,8 @@
         android:name="android.permission.SCHEDULE_EXACT_ALARM"
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- Installs a newer release from the install page (update.UpdateClient). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Lets the check-in notification find the Hiworks app (Notifier.HIWORKS_PACKAGE). -->
     <queries>
@@ -53,6 +55,10 @@
                 <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".update.InstallReceiver"
+            android:exported="false" />
 
     </application>
 

@@ -61,6 +61,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import io.github.bluewind8791.checkinreminder.BuildConfig
 import io.github.bluewind8791.checkinreminder.alarm.AlarmWork
 import io.github.bluewind8791.checkinreminder.data.CookieStore
 import io.github.bluewind8791.checkinreminder.data.HiworksClient
@@ -73,6 +74,8 @@ import io.github.bluewind8791.checkinreminder.domain.checkNow
 import io.github.bluewind8791.checkinreminder.ui.theme.AppTheme
 import io.github.bluewind8791.checkinreminder.ui.theme.JetBrainsMono
 import io.github.bluewind8791.checkinreminder.ui.theme.Palette
+import io.github.bluewind8791.checkinreminder.update.Release
+import io.github.bluewind8791.checkinreminder.update.UpdateClient
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -112,6 +115,8 @@ private fun MainScreen() {
     var confirmLogout by remember { mutableStateOf(false) }
     var editStart by remember { mutableStateOf(false) }
     var editAlerts by remember { mutableStateOf(false) }
+    val updateClient = remember { UpdateClient.create() }
+    var update by remember { mutableStateOf<Release?>(null) }
 
     fun check() {
         if (busy) return
@@ -151,6 +156,11 @@ private fun MainScreen() {
             // A force stop drops the alarms.
             AlarmWork.ensureScheduled(context.applicationContext)
         }
+    }
+
+    // A debug build has a different key, so a release APK cannot update it.
+    if (!BuildConfig.DEBUG) {
+        LaunchedEffect(Unit) { update = updateClient.newer(BuildConfig.VERSION_CODE) }
     }
 
     Column(
@@ -248,6 +258,10 @@ private fun MainScreen() {
             },
             containerColor = Palette.card,
         )
+    }
+
+    update?.let { release ->
+        UpdateDialog(release, updateClient, onDismiss = { update = null })
     }
 
     if (editStart) {
