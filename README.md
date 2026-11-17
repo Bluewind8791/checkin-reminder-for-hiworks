@@ -4,6 +4,22 @@
 
 > **비공식 도구입니다.** 하이웍스나 가비아와 관계가 없고, 공식 API가 아닌 웹에서 쓰는 API를 호출합니다. 하이웍스 쪽 변경으로 언제든 동작하지 않을 수 있습니다. 「하이웍스」는 해당 회사의 상표입니다.
 
+## 화면
+
+| 메인 화면 | 알림 시각 | 출근 시각 |
+| :---: | :---: | :---: |
+| <img src="docs/screenshots/main.png" width="240" alt="오늘 출근 기록, 출근 시각, 알림 시각, 다음 확인 시각이 보이는 메인 화면"> | <img src="docs/screenshots/alerts.png" width="240" alt="출근 20분·5분·1분 전 알림 목록과 알림 추가 버튼"> | <img src="docs/screenshots/start-time.png" width="240" alt="출근 시각을 직접 고르는 시계 다이얼로그"> |
+
+출근 전까지 출근 체크를 하지 않았으면 이런 알림이 옵니다. 누르면 하이웍스 앱이 열립니다.
+
+<img src="docs/screenshots/notification.png" width="420" alt="출근 체크를 아직 안 했습니다 · 09:00 출근, 10분 전입니다">
+
+## 설치
+
+[Releases](https://github.com/Bluewind8791/checkin-reminder-for-hiworks/releases/latest)에서 `app-release.apk`를 받아 설치합니다. Play 스토어 밖의 앱이라 「출처를 알 수 없는 앱 설치」를 허용해야 합니다.
+
+처음 열면 앱 안에서 하이웍스에 로그인하고, 알림 권한을 허용하세요.
+
 ## 하는 일
 
 - 근무 일정에서 오늘의 출근 시각을 읽고, 휴일·휴가인 날은 건너뜁니다.
@@ -21,6 +37,7 @@
 - JDK 17, Android SDK 35
 - `./gradlew assembleDebug`
 - 최소 Android 8.0 (API 26)
+- release 빌드는 Gradle 사용자 홈의 `gradle.properties`에 `checkinReminder.storeFile`, `checkinReminder.storePassword`, `checkinReminder.keyAlias`, `checkinReminder.keyPassword`가 있을 때만 서명됩니다. 없으면 서명되지 않은 APK가 나옵니다.
 
 정확한 시각에 알림을 보내려고 `USE_EXACT_ALARM` 권한을 씁니다. 배터리 최적화 예외는 필수가 아니지만, 알림이 늦게 오면 설정해 주세요.
 

@@ -20,6 +20,25 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // The release key stays off the repo: its path and passwords come from ~/.gradle/gradle.properties.
+    val releaseStore = providers.gradleProperty("checkinReminder.storeFile").orNull
+    signingConfigs {
+        if (releaseStore != null) {
+            create("release") {
+                storeFile = file(releaseStore)
+                storePassword = providers.gradleProperty("checkinReminder.storePassword").get()
+                keyAlias = providers.gradleProperty("checkinReminder.keyAlias").get()
+                keyPassword = providers.gradleProperty("checkinReminder.keyPassword").get()
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.findByName("release")
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
