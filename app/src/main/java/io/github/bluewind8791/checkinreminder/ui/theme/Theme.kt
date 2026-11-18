@@ -35,7 +35,11 @@ object Palette {
     val alarm = Color(0xFFFF9A3D)
     val alarmBg = Color(0xFFFFF4EA)
 
+    /** The current step of the first-run setup. */
+    val brandTint = Color(0xFFEEF6FD)
+
     val green = Color(0xFF1F7A3A)
+    val greenBg = Color(0xFFE3F1E7)
     val red = Color(0xFFC4321C)
     val orange = Color(0xFFC25E00)
 

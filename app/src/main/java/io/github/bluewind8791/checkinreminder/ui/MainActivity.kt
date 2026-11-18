@@ -1,10 +1,7 @@
 package io.github.bluewind8791.checkinreminder.ui
 
-import android.Manifest
 import android.app.Activity
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -51,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
@@ -60,6 +58,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import kotlinx.coroutines.launch
 import io.github.bluewind8791.checkinreminder.BuildConfig
 import io.github.bluewind8791.checkinreminder.alarm.AlarmWork
@@ -83,7 +82,8 @@ import java.util.Locale
 
 /**
  * Main screen: status, the 「지금 확인」 result, the start time setting,
- * the next alarm, the last background call, and logout.
+ * the next alarm, the last background call, the permissions, and logout.
+ * The first-run setup takes its place until it is over.
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -117,6 +117,9 @@ private fun MainScreen() {
     var editAlerts by remember { mutableStateOf(false) }
     val updateClient = remember { UpdateClient.create() }
     var update by remember { mutableStateOf<Release?>(null) }
+    var permissions by remember { mutableStateOf(Permissions.read(context)) }
+    // Shown when there is no saved session and the setup was never finished.
+    var setup by remember { mutableStateOf(false) }
 
     fun check() {
         if (busy) return
@@ -142,15 +145,19 @@ private fun MainScreen() {
     }
     val openLogin = { login.launch(Intent(context, LoginActivity::class.java)) }
 
-    val notifyPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    // The user may change a permission in the system settings and come back.
+    LifecycleResumeEffect(Unit) {
+        permissions = Permissions.read(context)
+        onPauseOrDispose {}
+    }
 
     LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            notifyPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
-        loggedIn = store.load() != null
+        val hasSession = store.load() != null
+        val setupDone = settingsStore.read().setupDone
+        // A user of an older version already set things up.
+        if (hasSession && !setupDone) settingsStore.setSetupDone()
+        setup = !hasSession && !setupDone
+        loggedIn = hasSession
         if (loggedIn == true) {
             check()
             // A force stop drops the alarms.
@@ -161,6 +168,22 @@ private fun MainScreen() {
     // A debug build has a different key, so a release APK cannot update it.
     if (!BuildConfig.DEBUG) {
         LaunchedEffect(Unit) { update = updateClient.newer(BuildConfig.VERSION_CODE) }
+    }
+
+    if (setup) {
+        SetupScreen(
+            permissions,
+            onPermissionsChanged = { permissions = Permissions.read(context) },
+            onDone = {
+                scope.launch {
+                    settingsStore.setSetupDone()
+                    setup = false
+                    loggedIn = store.load() != null
+                    if (loggedIn == true) check()
+                }
+            },
+        )
+        return
     }
 
     Column(
@@ -201,6 +224,7 @@ private fun MainScreen() {
                 current == null -> {
                     CommentLine(if (busy) "확인하는 중" else "「지금 확인」을 누르세요")
                     BigTime("--:--", Palette.textDim)
+                    NotifyWarning(permissions)
                 }
                 else -> CheckResultView(
                     current,
@@ -209,12 +233,14 @@ private fun MainScreen() {
                     settings.manualStart != null,
                     settings.alerts,
                     onRelogin = openLogin,
+                    warning = { NotifyWarning(permissions) },
                 )
             }
             checkedAt?.let { CommentLine("마지막 확인 ${it.format(DateTimeFormatter.ofPattern("HH:mm:ss"))}", Palette.textFaint) }
             if (loggedIn == true) {
                 Spacer(Modifier.height(8.dp))
                 AlarmLines(settings, onEditStart = { editStart = true }, onEditAlerts = { editAlerts = true })
+                PermissionLines(permissions)
             }
         }
         Row(
@@ -331,6 +357,60 @@ private fun AlarmLines(settings: Settings, onEditStart: () -> Unit, onEditAlerts
             code,
             if (ok) Palette.green else Palette.red,
             if (ok || callResult == "401") callAt.format(TIME) else "${callAt.format(TIME)} · $callResult",
+        )
+    }
+}
+
+/** Without the notification permission, the check alarms still run but nobody sees them. */
+@Composable
+private fun NotifyWarning(permissions: Permissions) {
+    if (permissions.notify) return
+    val context = LocalContext.current
+    MessagePanel(
+        tag = "WARN",
+        tagColor = Palette.orange,
+        background = Palette.warnBg,
+        borderColor = Palette.warnBorder,
+        text = "알림 권한이 꺼져 있어 출근 체크를 안 해도 알림이 오지 않습니다.",
+        action = "알림 설정 열기",
+        onAction = { context.openNotificationSettings() },
+    )
+}
+
+/** One line per permission. A missing one opens its settings screen. */
+@Composable
+private fun PermissionLines(permissions: Permissions) {
+    val context = LocalContext.current
+    Box(Modifier.fillMaxWidth().padding(top = 4.dp).height(1.dp).background(Palette.border))
+    PermissionLine("notify", permissions.notify, "알림 권한", "눌러서 설정", Palette.red) { context.openNotificationSettings() }
+    permissions.exactAlarm?.let {
+        PermissionLine("exactAlarm", it, "정확한 알람", "눌러서 설정", Palette.red) { context.openExactAlarmSettings() }
+    }
+    // Recommended only: the alarms ran on time for six days without it (Galaxy, 2026-11).
+    PermissionLine("batteryOpt", permissions.batteryOpt, "배터리 최적화 예외", "권장 · 눌러서 설정", Palette.orange) {
+        context.requestBatteryExemption()
+    }
+}
+
+@Composable
+private fun PermissionLine(
+    key: String,
+    granted: Boolean,
+    label: String,
+    deniedComment: String,
+    deniedColor: Color,
+    onOpen: () -> Unit,
+) {
+    if (granted) {
+        AssignLine(key, "granted", Palette.string, label)
+    } else {
+        AssignLine(
+            key,
+            "denied",
+            deniedColor,
+            deniedComment,
+            deniedColor,
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(vertical = 12.dp),
         )
     }
 }
@@ -476,7 +556,7 @@ private fun AddAlertField(input: String, alerts: List<Long>, onChange: (String) 
 /** Manual start time, or back to the work schedule. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun StartTimeDialog(initial: LocalTime, onDismiss: () -> Unit, onPick: (LocalTime?) -> Unit) {
+internal fun StartTimeDialog(initial: LocalTime, onDismiss: () -> Unit, onPick: (LocalTime?) -> Unit) {
     val state = rememberTimePickerState(initial.hour, initial.minute, is24Hour = true)
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -505,6 +585,7 @@ private fun CheckResultView(
     manualStart: Boolean,
     alerts: List<Long>,
     onRelogin: () -> Unit,
+    warning: @Composable () -> Unit,
 ) {
     val at = checkedAt?.format(TIME).orEmpty()
     when (result) {
@@ -517,22 +598,26 @@ private fun CheckResultView(
                     if (result.checkedIn) {
                         CommentLine("오늘 $date · 출근 확인됨")
                         BigTime(checkedInAt ?: "--:--", Palette.green)
+                        warning()
                     } else {
                         CommentLine("다음 확인 · 오늘 $date")
                         val checkedAtTime = result.date.atTime(checkedAt ?: LocalTime.now())
                         val next = AlarmPlan.nextStage(result.date, expected.time, alerts, checkedAtTime)
                         if (next != null) BigTime(next.at.format(TIME), Palette.text) else BigTime("--:--", Palette.textDim)
+                        warning()
                     }
                     AssignLine("start", start, Palette.number, if (manualStart) "직접 입력" else "근무 일정")
                 }
                 ExpectedStart.NoWork -> {
                     CommentLine("오늘 $date · 휴일 또는 종일 휴가")
                     BigTime("--:--", Palette.textDim)
+                    warning()
                     AssignLine("alarms", "none", Palette.string, "휴일·휴가")
                 }
                 is ExpectedStart.Unknown -> {
                     CommentLine("오늘 $date")
                     BigTime("--:--", Palette.textDim)
+                    warning()
                     AssignLine("start", "unknown", Palette.red, expected.reason, Palette.red)
                 }
             }

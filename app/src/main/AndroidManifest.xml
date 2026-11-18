@@ -11,6 +11,8 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <!-- Installs a newer release from the install page (update.UpdateClient). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Asks for the battery optimization exemption in one dialog (ui.Permissions). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Lets the check-in notification find the Hiworks app (Notifier.HIWORKS_PACKAGE). -->
     <queries>

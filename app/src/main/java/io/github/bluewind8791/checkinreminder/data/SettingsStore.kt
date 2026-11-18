@@ -2,6 +2,7 @@ package io.github.bluewind8791.checkinreminder.data
 
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -32,6 +33,8 @@ data class Settings(
     val lastCallAt: LocalDateTime? = null,
     /** "200", "401", or the failure reason of the last background call. */
     val lastCallResult: String? = null,
+    /** The first-run setup is over, or the app was already in use when the setup came. */
+    val setupDone: Boolean = false,
 )
 
 /** Settings and alarm state. Holds no secret: the cookie is in [CookieStore]. */
@@ -74,15 +77,19 @@ class SettingsStore(context: Context) {
         it[LAST_CALL_RESULT] = result
     }
 
+    suspend fun setSetupDone() = dataStore.edit { it[SETUP_DONE] = true }
+
     /** Clears everything except the user's own settings. Used by logout. */
     suspend fun clearSession() = dataStore.edit { prefs ->
         val manualStart = prefs[MANUAL_START]
         val alerts = prefs[ALERTS]
         val firstMinutes = prefs[FIRST_MINUTES]
+        val setupDone = prefs[SETUP_DONE]
         prefs.clear()
         if (manualStart != null) prefs[MANUAL_START] = manualStart
         if (alerts != null) prefs[ALERTS] = alerts
         if (firstMinutes != null) prefs[FIRST_MINUTES] = firstMinutes
+        if (setupDone != null) prefs[SETUP_DONE] = setupDone
     }
 
     private fun Preferences.toSettings() = Settings(
@@ -97,6 +104,7 @@ class SettingsStore(context: Context) {
         },
         lastCallAt = parse(this[LAST_CALL_AT], LocalDateTime::parse),
         lastCallResult = this[LAST_CALL_RESULT],
+        setupDone = this[SETUP_DONE] ?: false,
     )
 
     /** A value this class wrote. Null when it is missing or does not parse, so a bad value never crashes the app. */
@@ -115,6 +123,7 @@ class SettingsStore(context: Context) {
         val NEXT_MINUTES = longPreferencesKey("next_minutes")
         val LAST_CALL_AT = stringPreferencesKey("last_call_at")
         val LAST_CALL_RESULT = stringPreferencesKey("last_call_result")
+        val SETUP_DONE = booleanPreferencesKey("setup_done")
 
         val DAYS_SERIALIZER = ListSerializer(CalendarDay.serializer())
         val json = Json { ignoreUnknownKeys = true }
