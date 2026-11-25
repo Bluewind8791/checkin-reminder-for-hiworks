@@ -54,7 +54,7 @@ fun BrandBar(content: @Composable RowScope.() -> Unit) {
 fun TopBar(status: String, statusColor: Color) {
     BrandBar {
         Spacer(Modifier.width(16.dp))
-        Text("출근 체크 알림", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Palette.onBrand)
+        Text("출퇴근 알림", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Palette.onBrand)
         Spacer(Modifier.width(8.dp))
         Text("v${BuildConfig.VERSION_NAME}", fontFamily = JetBrainsMono, fontSize = 11.sp, color = Palette.onBrandSub)
         Spacer(Modifier.weight(1f))

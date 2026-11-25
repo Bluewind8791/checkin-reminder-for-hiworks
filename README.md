@@ -1,4 +1,4 @@
-# 출근 체크 알림 (Check-in Reminder for Hiworks)
+# 출퇴근 알림 (Check-in Reminder for Hiworks)
 
 하이웍스 근태관리에서 출근 체크를 잊지 않도록, 출근 시각 전에 아직 출근을 찍지 않았으면 알림을 보내는 Android 앱입니다.
 

@@ -43,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -81,9 +82,8 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
- * Main screen: status, the 「지금 확인」 result, the start time setting,
- * the next alarm, the last background call, the permissions, and logout.
- * The first-run setup takes its place until it is over.
+ * Main screen: the session in the top bar, a tab (출근 or 설정), and the floating dock
+ * with the tabs and 「지금 확인」. The first-run setup takes its place until it is over.
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -98,7 +98,6 @@ class MainActivity : ComponentActivity() {
 
 private val DATE = DateTimeFormatter.ofPattern("M월 d일 (E)", Locale.KOREAN)
 private val TIME = DateTimeFormatter.ofPattern("HH:mm")
-private val SHORT_DATE = DateTimeFormatter.ofPattern("M/d (E)", Locale.KOREAN)
 
 @Composable
 private fun MainScreen() {
@@ -120,6 +119,8 @@ private fun MainScreen() {
     var permissions by remember { mutableStateOf(Permissions.read(context)) }
     // Shown when there is no saved session and the setup was never finished.
     var setup by remember { mutableStateOf(false) }
+    var tab by rememberSaveable { mutableStateOf(MainTab.Start) }
+    var updateCheck by remember { mutableStateOf(UpdateCheck.Idle) }
 
     fun check() {
         if (busy) return
@@ -186,82 +187,94 @@ private fun MainScreen() {
         return
     }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(Palette.bg)
-            .navigationBarsPadding(),
-    ) {
-        val (status, statusColor) = when {
-            loggedIn != true -> "session: none" to Palette.textFaint
-            result == CheckResult.SessionExpired -> "session: expired" to Palette.red
-            result == null && settings.lastCallResult == "401" -> "session: expired" to Palette.red
-            else -> "session: alive" to Palette.green
-        }
-        TopBar(status, statusColor)
-        Column(
-            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Spacer(Modifier.height(8.dp))
-            val today = LocalDate.now()
-            val current = result
-            when {
-                loggedIn == null -> Unit
-                loggedIn == false -> {
-                    CommentLine("로그인 전")
-                    BigTime("--:--", Palette.textDim)
-                    MessagePanel(
-                        tag = "LOGIN",
-                        tagColor = Palette.brand,
-                        background = Palette.warnBg,
-                        borderColor = Palette.warnBorder,
-                        text = "하이웍스에 로그인하면 출근 여부를 확인할 수 있습니다.",
-                        action = "로그인",
-                        onAction = openLogin,
+    Box(Modifier.fillMaxSize().background(Palette.bg)) {
+        Column(Modifier.fillMaxSize()) {
+            // The latest call that reached Hiworks with the session, from the app or the background.
+            val lastOk = listOfNotNull(
+                checkedAt?.takeIf { result is CheckResult.Ok }?.let { LocalDate.now().atTime(it) },
+                settings.lastCallAt?.takeIf { settings.lastCallResult == "200" },
+            ).maxOrNull()
+            val (status, statusColor) = when {
+                loggedIn != true -> "session: none" to Palette.textFaint
+                result == CheckResult.SessionExpired -> "session: expired" to Palette.red
+                result == null && settings.lastCallResult == "401" -> "session: expired" to Palette.red
+                lastOk != null -> "session: ${lastOk.format(TIME)}" to Palette.green
+                else -> "session: --:--" to Palette.textFaint
+            }
+            TopBar(status, statusColor)
+            Column(
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Spacer(Modifier.height(8.dp))
+                when (tab) {
+                    MainTab.Start -> {
+                        TabTitle("출근")
+                        val today = LocalDate.now()
+                        val current = result
+                        when {
+                            loggedIn == null -> Unit
+                            loggedIn == false -> {
+                                CommentLine("로그인 전")
+                                BigTime("--:--", Palette.textDim)
+                                MessagePanel(
+                                    tag = "LOGIN",
+                                    tagColor = Palette.brand,
+                                    background = Palette.warnBg,
+                                    borderColor = Palette.warnBorder,
+                                    text = "하이웍스에 로그인하면 출근 여부를 확인할 수 있습니다.",
+                                    action = "로그인",
+                                    onAction = openLogin,
+                                )
+                            }
+                            current == null -> {
+                                CommentLine(if (busy) "확인하는 중" else "「지금 확인」을 누르세요")
+                                BigTime("--:--", Palette.textDim)
+                                NotifyWarning(permissions)
+                            }
+                            else -> CheckResultView(
+                                current,
+                                today,
+                                checkedAt,
+                                settings.manualStart != null,
+                                settings.alerts,
+                                onRelogin = openLogin,
+                                warning = { NotifyWarning(permissions) },
+                            )
+                        }
+                        if (loggedIn == true) {
+                            Spacer(Modifier.height(8.dp))
+                            AlarmLines(settings, onEditStart = { editStart = true }, onEditAlerts = { editAlerts = true })
+                        }
+                    }
+                    MainTab.Settings -> SettingsTab(
+                        permissions,
+                        updateCheck,
+                        onCheckUpdate = {
+                            updateCheck = UpdateCheck.Busy
+                            scope.launch {
+                                val release = updateClient.newer(BuildConfig.VERSION_CODE)
+                                update = release
+                                updateCheck = if (release == null) UpdateCheck.Latest else UpdateCheck.Idle
+                            }
+                        },
+                        onLogout = if (loggedIn == true) ({ confirmLogout = true }) else null,
                     )
                 }
-                current == null -> {
-                    CommentLine(if (busy) "확인하는 중" else "「지금 확인」을 누르세요")
-                    BigTime("--:--", Palette.textDim)
-                    NotifyWarning(permissions)
-                }
-                else -> CheckResultView(
-                    current,
-                    today,
-                    checkedAt,
-                    settings.manualStart != null,
-                    settings.alerts,
-                    onRelogin = openLogin,
-                    warning = { NotifyWarning(permissions) },
-                )
-            }
-            checkedAt?.let { CommentLine("마지막 확인 ${it.format(DateTimeFormatter.ofPattern("HH:mm:ss"))}", Palette.textFaint) }
-            if (loggedIn == true) {
-                Spacer(Modifier.height(8.dp))
-                AlarmLines(settings, onEditStart = { editStart = true }, onEditAlerts = { editAlerts = true })
-                PermissionLines(permissions)
+                // Room for the dock, so the last line can scroll above it.
+                Spacer(Modifier.navigationBarsPadding().height(DOCK_SPACE))
             }
         }
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            AppButton(
-                text = if (busy) "확인하는 중" else "▶ 지금 확인",
-                primary = true,
-                onClick = ::check,
-                enabled = loggedIn == true && !busy,
-                modifier = Modifier.weight(2f),
-            )
-            AppButton(
-                text = "로그아웃",
-                primary = false,
-                onClick = { confirmLogout = true },
-                enabled = loggedIn == true && !busy,
-                modifier = Modifier.weight(1f),
-            )
-        }
+        Dock(
+            tab = tab,
+            onTab = { tab = it },
+            checkedIn = (result as? CheckResult.Ok)?.checkedIn == true,
+            permissionMissing = !permissions.notify || permissions.exactAlarm == false || !permissions.batteryOpt,
+            busy = busy,
+            checkEnabled = loggedIn == true && !busy,
+            onCheck = ::check,
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 24.dp),
+        )
     }
 
     if (confirmLogout) {
@@ -320,9 +333,7 @@ private fun MainScreen() {
     }
 }
 
-/**
- * The start time and alert settings, the next check alarm, and the last background call.
- */
+/** The start time and alert settings. */
 @Composable
 private fun AlarmLines(settings: Settings, onEditStart: () -> Unit, onEditAlerts: () -> Unit) {
     val manual = settings.manualStart
@@ -340,25 +351,6 @@ private fun AlarmLines(settings: Settings, onEditStart: () -> Unit, onEditAlerts
         "눌러서 변경",
         modifier = Modifier.fillMaxWidth().clickable(onClick = onEditAlerts).padding(vertical = 12.dp),
     )
-    val next = settings.nextCheck
-    if (next != null) {
-        AssignLine("next", "${next.date.format(SHORT_DATE)} ${next.at.format(TIME)}", Palette.number, "T-${next.minutesBefore}")
-    } else {
-        AssignLine("next", "none", Palette.string)
-    }
-    val callAt = settings.lastCallAt
-    val callResult = settings.lastCallResult
-    if (callAt != null && callResult != null) {
-        val ok = callResult == "200"
-        // A failure stores its reason, such as "network: SocketTimeoutException".
-        val code = if (ok || callResult == "401") callResult else "fail"
-        AssignLine(
-            "keepalive",
-            code,
-            if (ok) Palette.green else Palette.red,
-            if (ok || callResult == "401") callAt.format(TIME) else "${callAt.format(TIME)} · $callResult",
-        )
-    }
 }
 
 /** Without the notification permission, the check alarms still run but nobody sees them. */
@@ -375,44 +367,6 @@ private fun NotifyWarning(permissions: Permissions) {
         action = "알림 설정 열기",
         onAction = { context.openNotificationSettings() },
     )
-}
-
-/** One line per permission. A missing one opens its settings screen. */
-@Composable
-private fun PermissionLines(permissions: Permissions) {
-    val context = LocalContext.current
-    Box(Modifier.fillMaxWidth().padding(top = 4.dp).height(1.dp).background(Palette.border))
-    PermissionLine("notify", permissions.notify, "알림 권한", "눌러서 설정", Palette.red) { context.openNotificationSettings() }
-    permissions.exactAlarm?.let {
-        PermissionLine("exactAlarm", it, "정확한 알람", "눌러서 설정", Palette.red) { context.openExactAlarmSettings() }
-    }
-    // Recommended only: the alarms ran on time for six days without it (Galaxy, 2026-11).
-    PermissionLine("batteryOpt", permissions.batteryOpt, "배터리 최적화 예외", "권장 · 눌러서 설정", Palette.orange) {
-        context.requestBatteryExemption()
-    }
-}
-
-@Composable
-private fun PermissionLine(
-    key: String,
-    granted: Boolean,
-    label: String,
-    deniedComment: String,
-    deniedColor: Color,
-    onOpen: () -> Unit,
-) {
-    if (granted) {
-        AssignLine(key, "granted", Palette.string, label)
-    } else {
-        AssignLine(
-            key,
-            "denied",
-            deniedColor,
-            deniedComment,
-            deniedColor,
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(vertical = 12.dp),
-        )
-    }
 }
 
 /** The alerts, in minutes before the start time. Adds and removes them, and saves them all at once. */

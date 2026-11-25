@@ -24,7 +24,7 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="출근 체크 알림"
+        android:label="출퇴근 알림"
         android:theme="@style/Theme.CheckinReminder">
 
         <activity
