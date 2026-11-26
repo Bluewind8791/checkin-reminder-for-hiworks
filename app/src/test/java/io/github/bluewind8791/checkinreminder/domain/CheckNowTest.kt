@@ -72,8 +72,9 @@ class CheckNowTest {
     }
 
     /**
-     * work-info-checked-out.json is the checked-in response with `end_at` filled in. The `end_at`
-     * format was confirmed against a live response on 2026-11-25.
+     * work-info-checked-out.json is a live response taken after a check-out on 2026-11-26, with the
+     * date, times, ids and place names replaced. The check-out also adds a `details` entry of type
+     * `end`; only `end_at` is read.
      */
     @Test
     fun `a checked-out day gives the check-out time`() = runBlocking {
