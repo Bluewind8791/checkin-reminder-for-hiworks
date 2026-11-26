@@ -69,6 +69,7 @@ private fun stateOf(done: Boolean, later: Boolean) = when {
 }
 
 private val DAY = DateTimeFormatter.ofPattern("M/d (E)", Locale.KOREAN)
+private val TIME = DateTimeFormatter.ofPattern("HH:mm")
 
 /**
  * First run, in four steps: notifications, the battery exemption, login, and the work schedule.
@@ -86,6 +87,7 @@ fun SetupScreen(permissions: Permissions, onPermissionsChanged: () -> Unit, onDo
     var loggedIn by remember { mutableStateOf(false) }
     // Null while the work schedule is being read.
     var result by remember { mutableStateOf<CheckResult?>(null) }
+    var checkedAt by remember { mutableStateOf<LocalTime?>(null) }
     var editStart by remember { mutableStateOf(false) }
 
     fun check() {
@@ -95,7 +97,12 @@ fun SetupScreen(permissions: Permissions, onPermissionsChanged: () -> Unit, onDo
             val checked = sessionId?.let {
                 checkNow(HiworksClient.create(it), LocalDate.now(), settingsStore.read().manualStart)
             }
-            if (checked == null || checked == CheckResult.SessionExpired) loggedIn = false else result = checked
+            if (checked == null || checked == CheckResult.SessionExpired) {
+                loggedIn = false
+            } else {
+                result = checked
+                checkedAt = LocalTime.now()
+            }
         }
     }
 
@@ -126,7 +133,17 @@ fun SetupScreen(permissions: Permissions, onPermissionsChanged: () -> Unit, onDo
             .background(Palette.bg)
             .navigationBarsPadding(),
     ) {
-        if (loggedIn) TopBar("session: alive", Palette.green) else TopBar("setup ${current + 1}/4", Palette.orange)
+        // The latest call that reached Hiworks with the session, as on the main screen.
+        // The login's keepalive call is one of them.
+        val lastOk = listOfNotNull(
+            checkedAt?.takeIf { result is CheckResult.Ok }?.let { LocalDate.now().atTime(it) },
+            settings.lastCallAt?.takeIf { settings.lastCallResult == "200" },
+        ).maxOrNull()
+        when {
+            !loggedIn -> TopBar("setup ${current + 1}/4", Palette.orange)
+            lastOk != null -> TopBar("session: ${lastOk.format(TIME)}", Palette.green)
+            else -> TopBar("session: --:--", Palette.textFaint)
+        }
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
