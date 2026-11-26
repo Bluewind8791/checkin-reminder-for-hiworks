@@ -51,7 +51,7 @@ object AlarmWork {
     }
 
     private suspend fun keepAlive(context: Context, settings: SettingsStore) {
-        val client = client(context) ?: return stop(context, settings)
+        val client = client(context) ?: return stop(context)
         val today = LocalDate.now()
         val result = client.calendar(today, today.plusDays(1))
         val now = LocalDateTime.now()
@@ -66,7 +66,7 @@ object AlarmWork {
             }
             ApiResult.SessionExpired -> {
                 Notifier.show(context, Notice.Login)
-                stop(context, settings)
+                stop(context)
             }
             is ApiResult.Failed -> {
                 // Try again before the session's idle timeout (4 hours or more).
@@ -76,9 +76,9 @@ object AlarmWork {
         }
     }
 
-    suspend fun check(context: Context, alarm: CheckAlarm) = mutex.withLock {
+    suspend fun check(context: Context, alarm: CheckAlarm): Unit = mutex.withLock {
         val settings = SettingsStore(context)
-        val client = client(context) ?: return@withLock stop(context, settings)
+        val client = client(context) ?: return@withLock stop(context)
         val result = decide(client, settings, alarm)
         val now = LocalDateTime.now()
         val name = name(alarm)
@@ -90,16 +90,13 @@ object AlarmWork {
         val outcome = AlarmPlan.afterCheck(alarm, alerts, result, now)
         outcome.notice?.let { Notifier.show(context, it) }
         when (val then = outcome.then) {
-            is Then.Stage -> {
-                AlarmScheduler.setCheck(context, then.alarm)
-                if (alarm.kind == AlarmKind.Start) settings.setNextCheck(then.alarm)
-            }
+            is Then.Stage -> AlarmScheduler.setCheck(context, then.alarm)
             Then.DayDone -> {
                 if (alarm.kind == AlarmKind.End) settings.setEndDoneDate(alarm.date) else settings.setDoneDate(alarm.date)
                 replan(context, settings)
             }
             Then.Replan -> replan(context, settings)
-            Then.Stop -> stop(context, settings)
+            Then.Stop -> stop(context)
         }
     }
 
@@ -140,11 +137,8 @@ object AlarmWork {
         val state = settings.read()
         val now = LocalDateTime.now()
         val next = AlarmPlan.next(state.days, state.manualStart, now, state.doneDate, state.alerts)
-        if (next != null && AlarmScheduler.setCheck(context, next)) {
-            settings.setNextCheck(next)
-        } else {
+        if (next == null || !AlarmScheduler.setCheck(context, next)) {
             AlarmScheduler.cancelCheck(context, AlarmKind.Start)
-            settings.setNextCheck(null)
         }
         val nextEnd = if (state.endOn) {
             AlarmPlan.nextEnd(state.days, state.manualEnd, now, state.endDoneDate, state.endAlerts)
@@ -162,9 +156,8 @@ object AlarmWork {
         AlarmKind.End -> "end" + AlarmPlan.label(alarm.minutesBefore)
     }
 
-    private suspend fun stop(context: Context, settings: SettingsStore) {
+    private fun stop(context: Context) {
         AlarmScheduler.cancelAll(context)
-        settings.setNextCheck(null)
     }
 
     private suspend fun client(context: Context): HiworksClient? =

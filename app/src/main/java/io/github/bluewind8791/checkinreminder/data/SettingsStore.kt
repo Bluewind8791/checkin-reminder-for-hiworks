@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import io.github.bluewind8791.checkinreminder.domain.AlarmPlan
-import io.github.bluewind8791.checkinreminder.domain.CheckAlarm
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -29,7 +28,6 @@ data class Settings(
     val days: List<CalendarDay> = emptyList(),
     /** The last date whose check alarms are over. */
     val doneDate: LocalDate? = null,
-    val nextCheck: CheckAlarm? = null,
     val lastCallAt: LocalDateTime? = null,
     /** "200", "401", or the failure reason of the last background call. */
     val lastCallResult: String? = null,
@@ -80,18 +78,6 @@ class SettingsStore(context: Context) {
 
     suspend fun setDoneDate(date: LocalDate) = dataStore.edit { it[DONE_DATE] = date.toString() }
 
-    suspend fun setNextCheck(alarm: CheckAlarm?) = dataStore.edit {
-        if (alarm == null) {
-            it.remove(NEXT_DATE)
-            it.remove(NEXT_START)
-            it.remove(NEXT_MINUTES)
-        } else {
-            it[NEXT_DATE] = alarm.date.toString()
-            it[NEXT_START] = alarm.start.toString()
-            it[NEXT_MINUTES] = alarm.minutesBefore
-        }
-    }
-
     suspend fun setLastCall(at: LocalDateTime, result: String) = dataStore.edit {
         it[LAST_CALL_AT] = at.toString()
         it[LAST_CALL_RESULT] = result
@@ -123,11 +109,6 @@ class SettingsStore(context: Context) {
         alerts = alertsFrom(this[ALERTS], this[FIRST_MINUTES]),
         days = parse(this[DAYS]) { json.decodeFromString(DAYS_SERIALIZER, it) }.orEmpty(),
         doneDate = parse(this[DONE_DATE], LocalDate::parse),
-        nextCheck = parse(this[NEXT_DATE], LocalDate::parse)?.let { date ->
-            val start = parse(this[NEXT_START], LocalTime::parse) ?: return@let null
-            val minutes = this[NEXT_MINUTES] ?: return@let null
-            CheckAlarm(date, start, minutes)
-        },
         lastCallAt = parse(this[LAST_CALL_AT], LocalDateTime::parse),
         lastCallResult = this[LAST_CALL_RESULT],
         setupDone = this[SETUP_DONE] ?: false,
@@ -149,9 +130,6 @@ class SettingsStore(context: Context) {
         val FIRST_MINUTES = longPreferencesKey("first_minutes")
         val DAYS = stringPreferencesKey("days")
         val DONE_DATE = stringPreferencesKey("done_date")
-        val NEXT_DATE = stringPreferencesKey("next_date")
-        val NEXT_START = stringPreferencesKey("next_start")
-        val NEXT_MINUTES = longPreferencesKey("next_minutes")
         val LAST_CALL_AT = stringPreferencesKey("last_call_at")
         val LAST_CALL_RESULT = stringPreferencesKey("last_call_result")
         val SETUP_DONE = booleanPreferencesKey("setup_done")
