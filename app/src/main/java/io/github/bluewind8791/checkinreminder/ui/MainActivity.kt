@@ -80,6 +80,7 @@ import io.github.bluewind8791.checkinreminder.ui.theme.JetBrainsMono
 import io.github.bluewind8791.checkinreminder.ui.theme.Palette
 import io.github.bluewind8791.checkinreminder.update.Release
 import io.github.bluewind8791.checkinreminder.update.UpdateClient
+import io.github.bluewind8791.checkinreminder.update.UpdateResult
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -175,7 +176,7 @@ private fun MainScreen() {
 
     // A debug build has a different key, so a release APK cannot update it.
     if (!BuildConfig.DEBUG) {
-        LaunchedEffect(Unit) { update = updateClient.newer(BuildConfig.VERSION_CODE) }
+        LaunchedEffect(Unit) { update = (updateClient.newer(BuildConfig.VERSION_CODE) as? UpdateResult.Newer)?.release }
     }
 
     if (setup) {
@@ -274,9 +275,18 @@ private fun MainScreen() {
                         onCheckUpdate = {
                             updateCheck = UpdateCheck.Busy
                             scope.launch {
-                                val release = updateClient.newer(BuildConfig.VERSION_CODE)
-                                update = release
-                                updateCheck = if (release == null) UpdateCheck.Latest else UpdateCheck.Idle
+                                when (val found = updateClient.newer(BuildConfig.VERSION_CODE)) {
+                                    is UpdateResult.Newer -> {
+                                        update = found.release
+                                        updateCheck = UpdateCheck.Idle
+                                    }
+                                    UpdateResult.Latest -> {
+                                        update = null
+                                        updateCheck = UpdateCheck.Latest
+                                    }
+                                    // Keep a release found earlier, and let the user try again.
+                                    UpdateResult.Failed -> updateCheck = UpdateCheck.Failed
+                                }
                             }
                         },
                         onLogout = if (loggedIn == true) ({ confirmLogout = true }) else null,

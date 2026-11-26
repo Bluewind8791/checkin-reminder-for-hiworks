@@ -42,7 +42,7 @@ import io.github.bluewind8791.checkinreminder.ui.theme.Palette
 
 enum class MainTab { Start, End, Settings }
 
-enum class UpdateCheck { Idle, Busy, Latest }
+enum class UpdateCheck { Idle, Busy, Latest, Failed }
 
 /** Space the floating dock covers at the bottom of the screen. */
 val DOCK_SPACE = 112.dp
@@ -212,19 +212,21 @@ fun SettingsTab(
             Text("버전 ", fontSize = 14.sp, color = Palette.text)
             Text("v${BuildConfig.VERSION_NAME}", fontFamily = JetBrainsMono, fontSize = 14.sp, color = Palette.textSub)
             Spacer(Modifier.weight(1f))
+            val canCheck = updateCheck == UpdateCheck.Idle || updateCheck == UpdateCheck.Failed
             Text(
                 when (updateCheck) {
                     UpdateCheck.Idle -> "새 버전 확인"
                     UpdateCheck.Busy -> "확인하는 중"
                     UpdateCheck.Latest -> "최신 버전입니다"
+                    UpdateCheck.Failed -> "확인 실패 · 다시 확인"
                 },
                 modifier = Modifier
                     .heightIn(min = 44.dp)
-                    .clickable(enabled = updateCheck == UpdateCheck.Idle, onClick = onCheckUpdate)
+                    .clickable(enabled = canCheck, onClick = onCheckUpdate)
                     .padding(horizontal = 4.dp, vertical = 12.dp),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (updateCheck == UpdateCheck.Idle) Palette.brand else Palette.textMuted,
+                color = if (canCheck) Palette.brand else Palette.textMuted,
             )
         }
         if (onLogout != null) {

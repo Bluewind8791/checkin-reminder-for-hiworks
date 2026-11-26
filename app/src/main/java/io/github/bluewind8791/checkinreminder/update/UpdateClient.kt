@@ -29,6 +29,14 @@ data class Release(
     val notes: List<String> = emptyList(),
 )
 
+/** What [UpdateClient.newer] found on the install page. */
+sealed interface UpdateResult {
+    data class Newer(val release: Release) : UpdateResult
+    data object Latest : UpdateResult
+    /** The page could not be read, or did not hold a usable release. */
+    data object Failed : UpdateResult
+}
+
 /**
  * Checks the install page for a newer release, and installs it.
  * Android installs the APK only when it is signed with the same key as this app.
@@ -37,20 +45,24 @@ class UpdateClient(
     private val http: OkHttpClient,
     private val base: HttpUrl = BASE,
 ) {
-    /** The latest release if its versionCode is higher than [currentCode]. Null if not, or on any failure. */
-    suspend fun newer(currentCode: Int): Release? = withContext(Dispatchers.IO) {
+    /** Whether the install page has a release with a higher versionCode than [currentCode]. */
+    suspend fun newer(currentCode: Int): UpdateResult = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(base.resolve(VERSION_FILE)!!).build()
         try {
             http.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext null
+                if (!response.isSuccessful) return@withContext UpdateResult.Failed
                 val release = json.decodeFromString<Release>(response.body?.string().orEmpty())
-                release.takeIf { it.versionCode > currentCode && APK_NAME.matches(it.apk) }
+                when {
+                    release.versionCode <= currentCode -> UpdateResult.Latest
+                    !APK_NAME.matches(release.apk) -> UpdateResult.Failed
+                    else -> UpdateResult.Newer(release)
+                }
             }
         } catch (e: IOException) {
-            null
+            UpdateResult.Failed
         } catch (e: IllegalArgumentException) {
             // kotlinx.serialization.SerializationException is an IllegalArgumentException.
-            null
+            UpdateResult.Failed
         }
     }
 

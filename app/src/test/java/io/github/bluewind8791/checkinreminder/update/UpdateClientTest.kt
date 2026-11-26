@@ -6,7 +6,6 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 
@@ -33,44 +32,54 @@ class UpdateClientTest {
     fun `newer returns a release with a higher versionCode`() = runBlocking {
         server.enqueue(version(2))
 
-        val release = client.newer(currentCode = 1)
+        val result = client.newer(currentCode = 1)
 
-        assertEquals(Release(2, "0.2.0", "checkin-reminder-0.2.0.apk", listOf("알림 문구 수정", "버그 수정")), release)
+        assertEquals(
+            UpdateResult.Newer(Release(2, "0.2.0", "checkin-reminder-0.2.0.apk", listOf("알림 문구 수정", "버그 수정"))),
+            result,
+        )
         assertEquals("/version.json", server.takeRequest().path)
     }
 
     @Test
-    fun `newer returns null for the same versionCode`() = runBlocking {
+    fun `newer returns latest for the same versionCode`() = runBlocking {
         server.enqueue(version(1))
 
-        assertNull(client.newer(currentCode = 1))
+        assertEquals(UpdateResult.Latest, client.newer(currentCode = 1))
     }
 
     @Test
-    fun `newer returns null when the apk is not a plain file name`() = runBlocking {
+    fun `newer fails when the apk is not a plain file name`() = runBlocking {
         server.enqueue(version(2, apk = "https://example.com/other.apk"))
 
-        assertNull(client.newer(currentCode = 1))
+        assertEquals(UpdateResult.Failed, client.newer(currentCode = 1))
     }
 
     @Test
-    fun `newer returns null on an HTTP error`() = runBlocking {
+    fun `newer fails on an HTTP error`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(404))
 
-        assertNull(client.newer(currentCode = 1))
+        assertEquals(UpdateResult.Failed, client.newer(currentCode = 1))
     }
 
     @Test
-    fun `newer returns null on a body that is not a release`() = runBlocking {
+    fun `newer fails on a body that is not a release`() = runBlocking {
         server.enqueue(MockResponse().setBody("<html></html>"))
 
-        assertNull(client.newer(currentCode = 1))
+        assertEquals(UpdateResult.Failed, client.newer(currentCode = 1))
+    }
+
+    @Test
+    fun `newer fails when the server is not reachable`() = runBlocking {
+        server.shutdown()
+
+        assertEquals(UpdateResult.Failed, client.newer(currentCode = 1))
     }
 
     @Test
     fun `notes are optional`() = runBlocking {
         server.enqueue(MockResponse().setBody("""{"versionCode": 2, "versionName": "0.2.0", "apk": "a.apk"}"""))
 
-        assertEquals(emptyList<String>(), client.newer(currentCode = 1)?.notes)
+        assertEquals(emptyList<String>(), (client.newer(currentCode = 1) as UpdateResult.Newer).release.notes)
     }
 }
