@@ -1,6 +1,6 @@
 {
-  "versionCode": 2,
-  "versionName": "0.2.0",
-  "apk": "checkin-reminder-0.2.0.apk",
-  "notes": ["앱을 열 때 새 버전을 알려 주고, 앱 안에서 바로 업데이트할 수 있습니다"]
+  "versionCode": 3,
+  "versionName": "0.3.0",
+  "apk": "checkin-reminder-0.3.0.apk",
+  "notes": ["퇴근을 찍지 않았을 때도 알려 줍니다(퇴근 탭에서 켜기, 처음에는 꺼짐)", "앱 이름이 「출퇴근 알림」으로 바뀌고, 화면이 출근·퇴근·설정 탭으로 나뉩니다"]
 }
