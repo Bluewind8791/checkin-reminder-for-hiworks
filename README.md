@@ -6,9 +6,13 @@
 
 ## 화면
 
-| 메인 화면 | 알림 시각 | 출근 시각 |
+| 출근 | 퇴근 | 설정 |
 | :---: | :---: | :---: |
-| <img src="docs/screenshots/main.png" width="240" alt="오늘 출근 기록, 출근 시각, 알림 시각, 다음 확인 시각이 보이는 메인 화면"> | <img src="docs/screenshots/alerts.png" width="240" alt="출근 20분·5분·1분 전 알림 목록과 알림 추가 버튼"> | <img src="docs/screenshots/start-time.png" width="240" alt="출근 시각을 직접 고르는 시계 다이얼로그"> |
+| <img src="docs/screenshots/main.png" width="240" alt="출근 탭. 오늘 출근 기록 08:32, 출근 시각, 알림 시각이 보이고 아래에 출근·퇴근·설정 탭과 지금 확인 버튼이 있는 독"> | <img src="docs/screenshots/end.png" width="240" alt="퇴근 탭. 퇴근 알림 ON 버튼, 퇴근 기록 18:00, 퇴근 시각, 퇴근 알림 시각 T+0·T+30"> | <img src="docs/screenshots/settings.png" width="240" alt="설정 탭. 알림 권한과 배터리 최적화 예외 상태, 버전과 새 버전 확인, 로그아웃"> |
+
+| 퇴근 알림 시각 | 출근 시각 |
+| :---: | :---: |
+| <img src="docs/screenshots/alerts.png" width="240" alt="퇴근 알림 목록 T+0·T+30과 퇴근 10분 전·뒤를 골라 추가하는 입력란"> | <img src="docs/screenshots/start-time.png" width="240" alt="출근 시각을 직접 고르는 시계 다이얼로그"> |
 
 출근 전까지 출근 체크를 하지 않았으면 이런 알림이 옵니다. 누르면 하이웍스 앱이 열립니다.
 
