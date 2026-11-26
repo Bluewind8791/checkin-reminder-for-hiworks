@@ -46,6 +46,8 @@ class HiworksClientTest {
 
         val info = (result as ApiResult.Success).value
         assertEquals("2026-11-06 08:48:24", info.startAt)
+        assertEquals("0000-00-00 00:00:00", info.endAt)
+        assertEquals("Y", info.useEndCheck)
         assertEquals("start", info.details.single().type)
         val request = server.takeRequest()
         assertEquals("/v4/web/user-work-info", request.path)
@@ -72,6 +74,7 @@ class HiworksClientTest {
         assertEquals("2026-11-05", day.workDate)
         assertEquals(0, day.dayOffType)
         assertEquals("09:00", day.planStartAt)
+        assertEquals("18:00", day.planEndAt)
         assertTrue(day.vacationData.isEmpty())
         val url = server.takeRequest().requestUrl!!
         assertEquals("/v4/my-work-data-calendar", url.encodedPath)

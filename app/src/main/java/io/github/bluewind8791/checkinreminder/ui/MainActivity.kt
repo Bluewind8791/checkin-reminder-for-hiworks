@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -47,11 +48,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -67,9 +70,10 @@ import io.github.bluewind8791.checkinreminder.data.CookieStore
 import io.github.bluewind8791.checkinreminder.data.HiworksClient
 import io.github.bluewind8791.checkinreminder.data.Settings
 import io.github.bluewind8791.checkinreminder.data.SettingsStore
+import io.github.bluewind8791.checkinreminder.domain.AlarmKind
 import io.github.bluewind8791.checkinreminder.domain.AlarmPlan
 import io.github.bluewind8791.checkinreminder.domain.CheckResult
-import io.github.bluewind8791.checkinreminder.domain.ExpectedStart
+import io.github.bluewind8791.checkinreminder.domain.ExpectedTime
 import io.github.bluewind8791.checkinreminder.domain.checkNow
 import io.github.bluewind8791.checkinreminder.ui.theme.AppTheme
 import io.github.bluewind8791.checkinreminder.ui.theme.JetBrainsMono
@@ -114,6 +118,8 @@ private fun MainScreen() {
     var confirmLogout by remember { mutableStateOf(false) }
     var editStart by remember { mutableStateOf(false) }
     var editAlerts by remember { mutableStateOf(false) }
+    var editEnd by remember { mutableStateOf(false) }
+    var editEndAlerts by remember { mutableStateOf(false) }
     val updateClient = remember { UpdateClient.create() }
     var update by remember { mutableStateOf<Release?>(null) }
     var permissions by remember { mutableStateOf(Permissions.read(context)) }
@@ -131,7 +137,8 @@ private fun MainScreen() {
                 loggedIn = false
                 result = null
             } else {
-                result = checkNow(HiworksClient.create(sessionId), LocalDate.now(), settingsStore.read().manualStart)
+                val saved = settingsStore.read()
+                result = checkNow(HiworksClient.create(sessionId), LocalDate.now(), saved.manualStart, saved.manualEnd)
                 checkedAt = LocalTime.now()
             }
             busy = false
@@ -214,19 +221,7 @@ private fun MainScreen() {
                         val current = result
                         when {
                             loggedIn == null -> Unit
-                            loggedIn == false -> {
-                                CommentLine("로그인 전")
-                                BigTime("--:--", Palette.textDim)
-                                MessagePanel(
-                                    tag = "LOGIN",
-                                    tagColor = Palette.brand,
-                                    background = Palette.warnBg,
-                                    borderColor = Palette.warnBorder,
-                                    text = "하이웍스에 로그인하면 출근 여부를 확인할 수 있습니다.",
-                                    action = "로그인",
-                                    onAction = openLogin,
-                                )
-                            }
+                            loggedIn == false -> LoggedOutView(openLogin)
                             current == null -> {
                                 CommentLine(if (busy) "확인하는 중" else "「지금 확인」을 누르세요")
                                 BigTime("--:--", Palette.textDim)
@@ -245,6 +240,32 @@ private fun MainScreen() {
                         if (loggedIn == true) {
                             Spacer(Modifier.height(8.dp))
                             AlarmLines(settings, onEditStart = { editStart = true }, onEditAlerts = { editAlerts = true })
+                        }
+                    }
+                    MainTab.End -> {
+                        TabTitle("퇴근")
+                        when (loggedIn) {
+                            null -> Unit
+                            false -> LoggedOutView(openLogin)
+                            true -> EndView(
+                                result,
+                                LocalDate.now(),
+                                checkedAt,
+                                settings,
+                                busy,
+                                onToggle = {
+                                    scope.launch {
+                                        val on = !settings.endOn
+                                        settingsStore.setEndOn(on)
+                                        // A schedule cached by an older version has no end times: fetch it again.
+                                        if (on) AlarmWork.keepAlive(context.applicationContext) else AlarmWork.replan(context.applicationContext)
+                                    }
+                                },
+                                onRelogin = openLogin,
+                                onEditEnd = { editEnd = true },
+                                onEditAlerts = { editEndAlerts = true },
+                                warning = { NotifyWarning(permissions) },
+                            )
                         }
                     }
                     MainTab.Settings -> SettingsTab(
@@ -320,6 +341,7 @@ private fun MainScreen() {
 
     if (editAlerts) {
         AlertsDialog(
+            AlarmKind.Start,
             current = settings.alerts,
             onDismiss = { editAlerts = false },
             onSave = { alerts ->
@@ -331,6 +353,157 @@ private fun MainScreen() {
             },
         )
     }
+
+    if (editEnd) {
+        StartTimeDialog(
+            initial = settings.manualEnd ?: LocalTime.of(18, 0),
+            onDismiss = { editEnd = false },
+            onPick = { time ->
+                editEnd = false
+                scope.launch {
+                    settingsStore.setManualEnd(time)
+                    AlarmWork.replan(context.applicationContext)
+                    check()
+                }
+            },
+        )
+    }
+
+    if (editEndAlerts) {
+        AlertsDialog(
+            AlarmKind.End,
+            current = settings.endAlerts,
+            onDismiss = { editEndAlerts = false },
+            onSave = { alerts ->
+                editEndAlerts = false
+                scope.launch {
+                    settingsStore.setEndAlerts(alerts)
+                    AlarmWork.replan(context.applicationContext)
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun LoggedOutView(onLogin: () -> Unit) {
+    CommentLine("로그인 전")
+    BigTime("--:--", Palette.textDim)
+    MessagePanel(
+        tag = "LOGIN",
+        tagColor = Palette.brand,
+        background = Palette.warnBg,
+        borderColor = Palette.warnBorder,
+        text = "하이웍스에 로그인하면 출퇴근 기록을 확인할 수 있습니다.",
+        action = "로그인",
+        onAction = onLogin,
+    )
+}
+
+/**
+ * The 퇴근 tab: the next end check, the end time and the check-out record, and the end settings.
+ * With the end alerts off, only the end time and the record.
+ */
+@Composable
+private fun EndView(
+    result: CheckResult?,
+    today: LocalDate,
+    checkedAt: LocalTime?,
+    settings: Settings,
+    busy: Boolean,
+    onToggle: () -> Unit,
+    onRelogin: () -> Unit,
+    onEditEnd: () -> Unit,
+    onEditAlerts: () -> Unit,
+    warning: @Composable () -> Unit,
+) {
+    val ok = result as? CheckResult.Ok
+    val date = today.format(DATE)
+    val dim = "--:--" to Palette.textDim
+    val (comment, big) = when {
+        !settings.endOn -> "퇴근 알림 꺼짐" to dim
+        result == null -> (if (busy) "확인하는 중" else "「지금 확인」을 누르세요") to dim
+        ok == null -> "오늘 $date" to dim
+        ok.checkedOutAt != null -> "오늘 $date · 퇴근 확인됨" to (ok.checkedOutAt.format(TIME) to Palette.green)
+        !ok.usesEndCheck -> "회사에서 퇴근 체크를 쓰지 않습니다" to dim
+        ok.expectedEnd == ExpectedTime.NoWork -> "오늘 $date · 휴일 또는 종일 휴가" to dim
+        !ok.checkedIn -> "오늘 $date · 출근 기록 없음" to dim
+        else -> {
+            val end = (ok.expectedEnd as? ExpectedTime.At)?.time
+            val now = ok.date.atTime(checkedAt ?: LocalTime.now())
+            val next = end?.let { AlarmPlan.nextStage(ok.date, it, settings.endAlerts, now, AlarmKind.End) }
+            if (next != null) {
+                "다음 확인 · ${endAlertText(next.minutesBefore)}" to (next.at.format(TIME) to Palette.text)
+            } else {
+                "오늘 $date" to dim
+            }
+        }
+    }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f)) { CommentLine(comment) }
+        EndToggle(settings.endOn, onToggle)
+    }
+    BigTime(big.first, big.second)
+    if (settings.endOn) warning()
+    when (result) {
+        is CheckResult.Ok -> {
+            when (val expected = result.expectedEnd) {
+                is ExpectedTime.At -> AssignLine(
+                    "end",
+                    expected.time.format(TIME),
+                    Palette.number,
+                    if (settings.manualEnd != null) "직접 입력" else "근무 일정",
+                )
+                ExpectedTime.NoWork -> AssignLine("end", "none", Palette.string, "휴일·휴가")
+                is ExpectedTime.Unknown -> AssignLine("end", "unknown", Palette.red, expected.reason, Palette.red)
+            }
+            val out = result.checkedOutAt
+            if (out != null) {
+                AssignLine("checkedOut", out.format(TIME), Palette.number, "하이웍스 기록")
+            } else {
+                AssignLine("checkedOut", "none", Palette.string)
+            }
+        }
+        null -> Unit
+        else -> ProblemPanel(result, checkedAt, onRelogin)
+    }
+    if (settings.endOn) {
+        Spacer(Modifier.height(8.dp))
+        val manual = settings.manualEnd
+        AssignLine(
+            "endTime",
+            manual?.format(TIME) ?: "auto",
+            if (manual != null) Palette.number else Palette.string,
+            if (manual != null) "직접 입력 · 눌러서 변경" else "근무 일정 · 눌러서 변경",
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onEditEnd).padding(vertical = 12.dp),
+        )
+        AssignLine(
+            "endAlerts",
+            settings.endAlerts.joinToString(", ", "[", "]") { AlarmPlan.label(it) },
+            Palette.number,
+            "눌러서 변경",
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onEditAlerts).padding(vertical = 12.dp),
+        )
+    } else {
+        Text(
+            "위의 「퇴근 알림 OFF」를 누르면 다시 켭니다.",
+            modifier = Modifier.padding(top = 8.dp),
+            fontSize = 12.sp,
+            color = Palette.textMuted,
+        )
+    }
+}
+
+/** "퇴근 10분 전", "퇴근 시각", "퇴근 30분 뒤". */
+private fun endAlertText(minutesBefore: Long): String = when {
+    minutesBefore > 0 -> "퇴근 ${minutesBefore}분 전"
+    minutesBefore == 0L -> "퇴근 시각"
+    else -> "퇴근 ${-minutesBefore}분 뒤"
+}
+
+private fun alertText(kind: AlarmKind, minutesBefore: Long): String = when (kind) {
+    AlarmKind.Start -> "출근 ${minutesBefore}분 전"
+    AlarmKind.End -> endAlertText(minutesBefore)
 }
 
 /** The start time and alert settings. */
@@ -363,24 +536,28 @@ private fun NotifyWarning(permissions: Permissions) {
         tagColor = Palette.orange,
         background = Palette.warnBg,
         borderColor = Palette.warnBorder,
-        text = "알림 권한이 꺼져 있어 출근 체크를 안 해도 알림이 오지 않습니다.",
+        text = "알림 권한이 꺼져 있어 출퇴근 체크를 안 해도 알림이 오지 않습니다.",
         action = "알림 설정 열기",
         onAction = { context.openNotificationSettings() },
     )
 }
 
-/** The alerts, in minutes before the start time. Adds and removes them, and saves them all at once. */
+/**
+ * The alerts, in minutes before the start or end time (negative: after the end time).
+ * Adds and removes them, and saves them all at once.
+ */
 @Composable
-private fun AlertsDialog(current: List<Long>, onDismiss: () -> Unit, onSave: (List<Long>) -> Unit) {
+private fun AlertsDialog(kind: AlarmKind, current: List<Long>, onDismiss: () -> Unit, onSave: (List<Long>) -> Unit) {
     var alerts by remember { mutableStateOf(current.sortedDescending()) }
     // Null while the add field is closed.
     var input by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("알림 시각", color = Palette.text) },
+        title = { Text(if (kind == AlarmKind.End) "퇴근 알림 시각" else "알림 시각", color = Palette.text) },
         text = {
             Column {
-                Text("출근 몇 분 전에 확인할지 · 최대 ${AlarmPlan.MAX_ALERTS}개", fontSize = 12.sp, color = Palette.textMuted)
+                val question = if (kind == AlarmKind.End) "퇴근 몇 분 전이나 뒤에 확인할지" else "출근 몇 분 전에 확인할지"
+                Text("$question · 최대 ${AlarmPlan.MAX_ALERTS}개", fontSize = 12.sp, color = Palette.textMuted)
                 Spacer(Modifier.height(8.dp))
                 for (minutes in alerts) {
                     Row(
@@ -388,13 +565,13 @@ private fun AlertsDialog(current: List<Long>, onDismiss: () -> Unit, onSave: (Li
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            "T-$minutes",
+                            AlarmPlan.label(minutes),
                             modifier = Modifier.width(56.dp),
                             fontFamily = JetBrainsMono,
                             fontWeight = FontWeight.Bold,
                             color = Palette.text,
                         )
-                        Text("출근 ${minutes}분 전", modifier = Modifier.weight(1f), fontSize = 14.sp, color = Palette.textSub)
+                        Text(alertText(kind, minutes), modifier = Modifier.weight(1f), fontSize = 14.sp, color = Palette.textSub)
                         // The last alert stays: at least one is needed.
                         val removable = alerts.size > 1
                         Text(
@@ -431,6 +608,7 @@ private fun AlertsDialog(current: List<Long>, onDismiss: () -> Unit, onSave: (Li
                     }
                 } else {
                     AddAlertField(
+                        kind,
                         typed,
                         alerts,
                         onChange = { input = it },
@@ -452,13 +630,25 @@ private fun AlertsDialog(current: List<Long>, onDismiss: () -> Unit, onSave: (Li
     )
 }
 
-/** 「출근 [  ] 분 전 [추가]」, and why the number cannot be added. */
+/** 「출근 [  ] 분 전 [추가]」 or 「퇴근 [  ] 분 [전|뒤] [추가]」, and why the number cannot be added. */
 @Composable
-private fun AddAlertField(input: String, alerts: List<Long>, onChange: (String) -> Unit, onAdd: (Long) -> Unit) {
-    val minutes = input.toLongOrNull()
+private fun AddAlertField(
+    kind: AlarmKind,
+    input: String,
+    alerts: List<Long>,
+    onChange: (String) -> Unit,
+    onAdd: (Long) -> Unit,
+) {
+    val end = kind == AlarmKind.End
+    // Only for an end alert: after the end time.
+    var after by remember { mutableStateOf(false) }
+    val typed = input.toLongOrNull()
+    val minutes = typed?.let { if (after) -it else it }
     val error = when {
         minutes == null -> null
-        minutes !in AlarmPlan.MINUTES_RANGE ->
+        end && minutes !in AlarmPlan.END_MINUTES_RANGE ->
+            "전은 ${AlarmPlan.END_MINUTES_RANGE.last}분, 뒤는 ${-AlarmPlan.END_MINUTES_RANGE.first}분까지 입력하세요"
+        !end && minutes !in AlarmPlan.MINUTES_RANGE ->
             "${AlarmPlan.MINUTES_RANGE.first}~${AlarmPlan.MINUTES_RANGE.last}분 사이로 입력하세요"
         minutes in alerts -> "이미 있는 알림입니다"
         else -> null
@@ -475,10 +665,10 @@ private fun AddAlertField(input: String, alerts: List<Long>, onChange: (String) 
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("출근 ", fontSize = 14.sp, color = Palette.textSub)
+            Text(if (end) "퇴근 " else "출근 ", fontSize = 14.sp, color = Palette.textSub)
             BasicTextField(
                 value = input,
-                onValueChange = { onChange(it.filter(Char::isDigit).take(2)) },
+                onValueChange = { onChange(it.filter(Char::isDigit).take(if (end) 3 else 2)) },
                 modifier = Modifier.width(48.dp).focusRequester(focus),
                 textStyle = TextStyle(
                     fontFamily = JetBrainsMono,
@@ -498,7 +688,13 @@ private fun AddAlertField(input: String, alerts: List<Long>, onChange: (String) 
                     }
                 },
             )
-            Text(" 분 전", modifier = Modifier.weight(1f), fontSize = 14.sp, color = Palette.textSub)
+            if (end) {
+                Text(" 분 ", fontSize = 14.sp, color = Palette.textSub)
+                BeforeAfter(after, onChange = { after = it })
+                Spacer(Modifier.weight(1f))
+            } else {
+                Text(" 분 전", modifier = Modifier.weight(1f), fontSize = 14.sp, color = Palette.textSub)
+            }
             AppButton("추가", primary = true, onClick = add, enabled = minutes != null && error == null)
         }
         if (error != null) {
@@ -507,7 +703,7 @@ private fun AddAlertField(input: String, alerts: List<Long>, onChange: (String) 
     }
 }
 
-/** Manual start time, or back to the work schedule. */
+/** Manual start or end time, or back to the work schedule. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun StartTimeDialog(initial: LocalTime, onDismiss: () -> Unit, onPick: (LocalTime?) -> Unit) {
@@ -541,13 +737,12 @@ private fun CheckResultView(
     onRelogin: () -> Unit,
     warning: @Composable () -> Unit,
 ) {
-    val at = checkedAt?.format(TIME).orEmpty()
     when (result) {
         is CheckResult.Ok -> {
             val date = result.date.format(DATE)
             val checkedInAt = result.checkedInAt?.format(TIME)
             when (val expected = result.expected) {
-                is ExpectedStart.At -> {
+                is ExpectedTime.At -> {
                     val start = expected.time.format(TIME)
                     if (result.checkedIn) {
                         CommentLine("오늘 $date · 출근 확인됨")
@@ -562,13 +757,13 @@ private fun CheckResultView(
                     }
                     AssignLine("start", start, Palette.number, if (manualStart) "직접 입력" else "근무 일정")
                 }
-                ExpectedStart.NoWork -> {
+                ExpectedTime.NoWork -> {
                     CommentLine("오늘 $date · 휴일 또는 종일 휴가")
                     BigTime("--:--", Palette.textDim)
                     warning()
                     AssignLine("alarms", "none", Palette.string, "휴일·휴가")
                 }
-                is ExpectedStart.Unknown -> {
+                is ExpectedTime.Unknown -> {
                     CommentLine("오늘 $date")
                     BigTime("--:--", Palette.textDim)
                     warning()
@@ -581,30 +776,59 @@ private fun CheckResultView(
                 AssignLine("checkedIn", "none", Palette.string)
             }
         }
-        CheckResult.SessionExpired -> {
+        else -> {
             CommentLine("오늘 ${today.format(DATE)}")
             BigTime("--:--", Palette.textDim)
-            MessagePanel(
-                tag = "401",
-                tagColor = Palette.red,
-                background = Palette.errorBg,
-                borderColor = Palette.errorBorder,
-                text = "$at 확인에서 세션이 만료됐습니다. 다시 로그인해야 출근 여부를 확인할 수 있습니다.",
-                note = "회사 밖에서 접속이 제한된 경우에도 이렇게 보일 수 있습니다.",
-                action = "다시 로그인",
-                onAction = onRelogin,
-            )
+            ProblemPanel(result, checkedAt, onRelogin)
         }
-        is CheckResult.Failed -> {
-            CommentLine("오늘 ${today.format(DATE)}")
-            BigTime("--:--", Palette.textDim)
-            MessagePanel(
-                tag = "WARN",
-                tagColor = Palette.orange,
-                background = Palette.warnBg,
-                borderColor = Palette.warnBorder,
-                text = "$at 출근 여부를 확인하지 못했습니다. 하이웍스 앱에서 직접 확인하세요.",
-                note = result.reason,
+    }
+}
+
+/** A session that expired, or a check that failed. Nothing for a check that worked. */
+@Composable
+private fun ProblemPanel(result: CheckResult, checkedAt: LocalTime?, onRelogin: () -> Unit) {
+    val at = checkedAt?.format(TIME).orEmpty()
+    when (result) {
+        is CheckResult.Ok -> Unit
+        CheckResult.SessionExpired -> MessagePanel(
+            tag = "401",
+            tagColor = Palette.red,
+            background = Palette.errorBg,
+            borderColor = Palette.errorBorder,
+            text = "$at 확인에서 세션이 만료됐습니다. 다시 로그인해야 출퇴근 기록을 확인할 수 있습니다.",
+            note = "회사 밖에서 접속이 제한된 경우에도 이렇게 보일 수 있습니다.",
+            action = "다시 로그인",
+            onAction = onRelogin,
+        )
+        is CheckResult.Failed -> MessagePanel(
+            tag = "WARN",
+            tagColor = Palette.orange,
+            background = Palette.warnBg,
+            borderColor = Palette.warnBorder,
+            text = "$at 하이웍스 기록을 확인하지 못했습니다. 하이웍스 앱에서 직접 확인하세요.",
+            note = result.reason,
+        )
+    }
+}
+
+/** 「전」 or 「뒤」 for an end alert. */
+@Composable
+private fun BeforeAfter(after: Boolean, onChange: (Boolean) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        for ((label, value) in listOf("전" to false, "뒤" to true)) {
+            val selected = after == value
+            val shape = RoundedCornerShape(6.dp)
+            Text(
+                label,
+                modifier = Modifier
+                    .clip(shape)
+                    .background(if (selected) Palette.brandTint else Palette.card, shape)
+                    .border(if (selected) 1.5.dp else 1.dp, if (selected) Palette.brand else Palette.border, shape)
+                    .selectable(selected = selected, role = Role.RadioButton, onClick = { onChange(value) })
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                fontSize = 14.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                color = if (selected) Palette.key else Palette.textSub,
             )
         }
     }

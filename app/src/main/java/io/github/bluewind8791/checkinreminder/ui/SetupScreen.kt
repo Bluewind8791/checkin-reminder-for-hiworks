@@ -51,7 +51,7 @@ import io.github.bluewind8791.checkinreminder.data.HiworksClient
 import io.github.bluewind8791.checkinreminder.data.Settings
 import io.github.bluewind8791.checkinreminder.data.SettingsStore
 import io.github.bluewind8791.checkinreminder.domain.CheckResult
-import io.github.bluewind8791.checkinreminder.domain.ExpectedStart
+import io.github.bluewind8791.checkinreminder.domain.ExpectedTime
 import io.github.bluewind8791.checkinreminder.domain.checkNow
 import io.github.bluewind8791.checkinreminder.ui.theme.JetBrainsMono
 import io.github.bluewind8791.checkinreminder.ui.theme.Palette
@@ -111,7 +111,7 @@ fun SetupScreen(permissions: Permissions, onPermissionsChanged: () -> Unit, onDo
     }
 
     val expected = (result as? CheckResult.Ok)?.expected
-    val known = expected is ExpectedStart.At || expected == ExpectedStart.NoWork
+    val known = expected is ExpectedTime.At || expected == ExpectedTime.NoWork
     val states = listOf(
         stateOf(permissions.notify, notifyLater),
         stateOf(permissions.batteryOpt, batteryLater),
@@ -171,7 +171,7 @@ fun SetupScreen(permissions: Permissions, onPermissionsChanged: () -> Unit, onDo
             else -> when {
                 result == null -> SetupButtons("확인하는 중", onClick = {}, enabled = false)
                 known -> SetupButtons("시작하기", onClick = onDone)
-                expected is ExpectedStart.Unknown -> SetupButtons("출근 시각 입력", onClick = { editStart = true }, onLater = onDone)
+                expected is ExpectedTime.Unknown -> SetupButtons("출근 시각 입력", onClick = { editStart = true }, onLater = onDone)
                 else -> SetupButtons("다시 확인", onClick = ::check, onLater = onDone)
             }
         }
@@ -282,12 +282,12 @@ private fun ScheduleDetail(result: CheckResult?, manualStart: Boolean) {
     when (result) {
         null -> StepDetail("근무 일정에서 출근 시각을 가져오는 중입니다.")
         is CheckResult.Ok -> when (val expected = result.expected) {
-            is ExpectedStart.At -> {
+            is ExpectedTime.At -> {
                 StepDetail(if (manualStart) "직접 입력한 출근 시각을 씁니다." else "근무 일정에서 출근 시각을 가져왔습니다.")
                 AssignLine("start", expected.time.format(DateTimeFormatter.ofPattern("HH:mm")), Palette.number, "오늘 ${result.date.format(DAY)}")
             }
-            ExpectedStart.NoWork -> StepDetail("오늘은 휴일 또는 종일 휴가입니다. 다음 근무일부터 알림이 옵니다.")
-            is ExpectedStart.Unknown -> {
+            ExpectedTime.NoWork -> StepDetail("오늘은 휴일 또는 종일 휴가입니다. 다음 근무일부터 알림이 옵니다.")
+            is ExpectedTime.Unknown -> {
                 StepDetail("근무 일정에 출근 시각이 없습니다. 출근 시각을 직접 입력하세요.")
                 AssignLine("start", "unknown", Palette.red)
             }

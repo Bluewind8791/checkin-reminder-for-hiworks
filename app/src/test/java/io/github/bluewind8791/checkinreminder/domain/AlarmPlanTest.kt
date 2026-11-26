@@ -125,31 +125,31 @@ class AlarmPlanTest {
 
     @Test
     fun `not checked in notifies and sets the next alert`() {
-        val outcome = AlarmPlan.afterCheck(first, defaults, ApiResult.Success(Decision.NotCheckedIn), at(8, 50))
+        val outcome = AlarmPlan.afterCheck(first, defaults, ApiResult.Success(Decision.NotDone), at(8, 50))
         assertEquals(StageOutcome(Notice.CheckIn(nine, 10), Then.Stage(CheckAlarm(today, nine, 5))), outcome)
     }
 
     @Test
     fun `not checked in at the last alert ends the day`() {
-        val outcome = AlarmPlan.afterCheck(last, defaults, ApiResult.Success(Decision.NotCheckedIn), at(8, 59))
+        val outcome = AlarmPlan.afterCheck(last, defaults, ApiResult.Success(Decision.NotDone), at(8, 59))
         assertEquals(StageOutcome(Notice.CheckIn(nine, 1), Then.DayDone), outcome)
     }
 
     @Test
     fun `a late alarm skips the alerts it missed`() {
-        val outcome = AlarmPlan.afterCheck(first, defaults, ApiResult.Success(Decision.NotCheckedIn), at(8, 56))
+        val outcome = AlarmPlan.afterCheck(first, defaults, ApiResult.Success(Decision.NotDone), at(8, 56))
         assertEquals(Then.Stage(CheckAlarm(today, nine, 1)), outcome.then)
     }
 
     @Test
     fun `the next alert comes from the alert setting`() {
-        val outcome = AlarmPlan.afterCheck(CheckAlarm(today, nine, 30), five, ApiResult.Success(Decision.NotCheckedIn), at(8, 30))
+        val outcome = AlarmPlan.afterCheck(CheckAlarm(today, nine, 30), five, ApiResult.Success(Decision.NotDone), at(8, 30))
         assertEquals(StageOutcome(Notice.CheckIn(nine, 30), Then.Stage(CheckAlarm(today, nine, 15))), outcome)
     }
 
     @Test
     fun `checked in ends the day quietly`() {
-        val outcome = AlarmPlan.afterCheck(first, defaults, ApiResult.Success(Decision.CheckedIn), at(8, 50))
+        val outcome = AlarmPlan.afterCheck(first, defaults, ApiResult.Success(Decision.Done), at(8, 50))
         assertEquals(StageOutcome(null, Then.DayDone), outcome)
     }
 
@@ -186,5 +186,65 @@ class AlarmPlanTest {
     fun `undetermined notifies as a response error`() {
         val outcome = AlarmPlan.afterCheck(first, defaults, ApiResult.Success(Decision.Undetermined("no start time")), at(8, 50))
         assertEquals(StageOutcome(Notice.Failed(network = false), Then.Stage(CheckAlarm(today, nine, 5))), outcome)
+    }
+
+    // end alarms
+
+    private val six = LocalTime.of(18, 0)
+    private val endAlerts = listOf(10L, 0L, -30L)
+
+    private fun endDay(date: LocalDate, dayOffType: Int = 0) =
+        CalendarDay(workDate = date.toString(), dayOffType = dayOffType, planEndAt = "18:00")
+
+    private fun end(minutesBefore: Long, date: LocalDate = today) = CheckAlarm(date, six, minutesBefore, AlarmKind.End)
+
+    @Test
+    fun `an end alarm rings before, at, or after the end time`() {
+        assertEquals(at(17, 50), end(10).at)
+        assertEquals(at(18, 0), end(0).at)
+        assertEquals(at(18, 30), end(-30).at)
+    }
+
+    @Test
+    fun `the first end alert of the day is next`() {
+        val days = listOf(endDay(today), endDay(tomorrow))
+        assertEquals(end(10), AlarmPlan.nextEnd(days, null, at(12, 0), null, endAlerts))
+    }
+
+    @Test
+    fun `after the end time the after alert is next`() {
+        val days = listOf(endDay(today), endDay(tomorrow))
+        assertEquals(end(-30), AlarmPlan.nextEnd(days, null, at(18, 5), null, endAlerts))
+    }
+
+    @Test
+    fun `a done day or a day off moves the end alarms on`() {
+        val days = listOf(endDay(today), endDay(tomorrow, dayOffType = 1), endDay(tomorrow.plusDays(1)))
+        assertEquals(end(10, tomorrow.plusDays(1)), AlarmPlan.nextEnd(days, null, at(12, 0), today, endAlerts))
+    }
+
+    @Test
+    fun `not checked out notifies and goes to the next end alert`() {
+        val outcome = AlarmPlan.afterCheck(end(0), endAlerts, ApiResult.Success(Decision.NotDone), at(18, 0))
+        assertEquals(StageOutcome(Notice.CheckOut(six, 0), Then.Stage(end(-30))), outcome)
+    }
+
+    @Test
+    fun `checked out ends the end alarms of the day`() {
+        val outcome = AlarmPlan.afterCheck(end(10), endAlerts, ApiResult.Success(Decision.Done), at(17, 50))
+        assertEquals(StageOutcome(null, Then.DayDone), outcome)
+    }
+
+    @Test
+    fun `a failed end check says it was the end check`() {
+        val outcome = AlarmPlan.afterCheck(end(-30), endAlerts, ApiResult.Failed("HTTP 500"), at(18, 30))
+        assertEquals(StageOutcome(Notice.Failed(false, AlarmKind.End), Then.DayDone), outcome)
+    }
+
+    @Test
+    fun `labels show before, at and after`() {
+        assertEquals("T-10", AlarmPlan.label(10))
+        assertEquals("T+0", AlarmPlan.label(0))
+        assertEquals("T+30", AlarmPlan.label(-30))
     }
 }

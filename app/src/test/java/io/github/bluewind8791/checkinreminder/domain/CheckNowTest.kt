@@ -47,9 +47,12 @@ class CheckNowTest {
         assertEquals(
             CheckResult.Ok(
                 date = day,
-                expected = ExpectedStart.At(LocalTime.of(9, 0)),
+                expected = ExpectedTime.At(LocalTime.of(9, 0)),
                 checkedIn = true,
                 checkedInAt = LocalTime.of(8, 48, 24),
+                expectedEnd = ExpectedTime.At(LocalTime.of(18, 0)),
+                checkedOutAt = null,
+                usesEndCheck = true,
             ),
             result,
         )
@@ -66,6 +69,31 @@ class CheckNowTest {
 
         assertEquals(false, result.checkedIn)
         assertEquals(null, result.checkedInAt)
+    }
+
+    /**
+     * work-info-checked-out.json is the checked-in response with `end_at` filled in. The `end_at`
+     * format was confirmed against a live response on 2026-11-25.
+     */
+    @Test
+    fun `a checked-out day gives the check-out time`() = runBlocking {
+        server.enqueue(MockResponse().setBody(fixture("calendar-normal.json")))
+        server.enqueue(MockResponse().setBody(fixture("work-info-checked-out.json")))
+
+        val result = checkNow(client, day) as CheckResult.Ok
+
+        assertEquals(LocalTime.of(18, 1, 10), result.checkedOutAt)
+        assertEquals(true, result.usesEndCheck)
+    }
+
+    @Test
+    fun `a manual end time wins over the schedule`() = runBlocking {
+        server.enqueue(MockResponse().setBody(fixture("calendar-normal.json")))
+        server.enqueue(MockResponse().setBody(fixture("work-info-checked-in.json")))
+
+        val result = checkNow(client, day, manualEnd = LocalTime.of(19, 30)) as CheckResult.Ok
+
+        assertEquals(ExpectedTime.At(LocalTime.of(19, 30)), result.expectedEnd)
     }
 
     @Test

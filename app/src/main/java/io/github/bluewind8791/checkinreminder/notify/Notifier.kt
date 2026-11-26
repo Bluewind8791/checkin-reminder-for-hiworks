@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import io.github.bluewind8791.checkinreminder.R
+import io.github.bluewind8791.checkinreminder.domain.AlarmKind
 import io.github.bluewind8791.checkinreminder.domain.Notice
 import io.github.bluewind8791.checkinreminder.ui.LoginActivity
 import java.time.format.DateTimeFormatter
@@ -15,12 +16,14 @@ import java.time.format.DateTimeFormatter
 /** Notification channels and texts. */
 object Notifier {
     private const val CHANNEL_CHECKIN = "checkin"
+    private const val CHANNEL_CHECKOUT = "checkout"
     private const val CHANNEL_ACCOUNT = "account"
 
     // One fixed ID per kind: a new notification replaces the old one of the same kind.
     private const val ID_CHECKIN = 1
     private const val ID_LOGIN = 2
     private const val ID_FAILED = 3
+    private const val ID_CHECKOUT = 4
 
     /**
      * The Hiworks app (seen on a device on 2026-11-11).
@@ -35,6 +38,7 @@ object Notifier {
         manager.createNotificationChannels(
             listOf(
                 NotificationChannel(CHANNEL_CHECKIN, "출근 알림", NotificationManager.IMPORTANCE_HIGH),
+                NotificationChannel(CHANNEL_CHECKOUT, "퇴근 알림", NotificationManager.IMPORTANCE_HIGH),
                 NotificationChannel(CHANNEL_ACCOUNT, "계정·오류", NotificationManager.IMPORTANCE_DEFAULT),
             ),
         )
@@ -45,15 +49,30 @@ object Notifier {
                 text = "${notice.start.format(TIME)} 출근, ${notice.minutesBefore}분 전입니다. 누르면 하이웍스 앱을 엽니다.",
                 tap = hiworks(context),
             )
+            is Notice.CheckOut -> {
+                val end = notice.end.format(TIME)
+                val minutes = notice.minutesBefore
+                val text = when {
+                    minutes > 0 -> "$end 퇴근, ${minutes}분 전입니다."
+                    minutes == 0L -> "$end 퇴근 시각입니다."
+                    else -> "$end 퇴근, ${-minutes}분 지났습니다."
+                }
+                post(
+                    context, manager, CHANNEL_CHECKOUT, ID_CHECKOUT,
+                    title = "퇴근 체크를 아직 안 했습니다",
+                    text = "$text 누르면 하이웍스 앱을 엽니다.",
+                    tap = hiworks(context),
+                )
+            }
             Notice.Login -> post(
                 context, manager, CHANNEL_ACCOUNT, ID_LOGIN,
                 title = "다시 로그인하세요",
-                text = "세션이 만료돼 출근 여부를 확인할 수 없습니다.",
+                text = "세션이 만료돼 출퇴근 기록을 확인할 수 없습니다.",
                 tap = Intent(context, LoginActivity::class.java),
             )
             is Notice.Failed -> post(
                 context, manager, CHANNEL_ACCOUNT, ID_FAILED,
-                title = "출근 여부를 확인하지 못했습니다",
+                title = if (notice.kind == AlarmKind.End) "퇴근 여부를 확인하지 못했습니다" else "출근 여부를 확인하지 못했습니다",
                 text = "${if (notice.network) "네트워크 오류" else "응답 오류"}입니다. 하이웍스 앱에서 직접 확인하세요.",
                 tap = hiworks(context),
             )

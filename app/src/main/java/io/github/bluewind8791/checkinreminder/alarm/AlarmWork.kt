@@ -9,6 +9,7 @@ import io.github.bluewind8791.checkinreminder.data.CallLog
 import io.github.bluewind8791.checkinreminder.data.CookieStore
 import io.github.bluewind8791.checkinreminder.data.HiworksClient
 import io.github.bluewind8791.checkinreminder.data.SettingsStore
+import io.github.bluewind8791.checkinreminder.domain.AlarmKind
 import io.github.bluewind8791.checkinreminder.domain.AlarmPlan
 import io.github.bluewind8791.checkinreminder.domain.CheckAlarm
 import io.github.bluewind8791.checkinreminder.domain.Decider
@@ -80,18 +81,21 @@ object AlarmWork {
         val client = client(context) ?: return@withLock stop(context, settings)
         val result = decide(client, settings, alarm)
         val now = LocalDateTime.now()
-        Log.i(TAG, "check T-${alarm.minutesBefore}: ${label(result)}")
+        val name = name(alarm)
+        Log.i(TAG, "$name: ${label(result)}")
         settings.setLastCall(now, label(result))
-        CallLog.append(context, now, "checkT-${alarm.minutesBefore}", label(result))
-        val outcome = AlarmPlan.afterCheck(alarm, settings.read().alerts, result, now)
+        CallLog.append(context, now, name, label(result))
+        val state = settings.read()
+        val alerts = if (alarm.kind == AlarmKind.End) state.endAlerts else state.alerts
+        val outcome = AlarmPlan.afterCheck(alarm, alerts, result, now)
         outcome.notice?.let { Notifier.show(context, it) }
         when (val then = outcome.then) {
             is Then.Stage -> {
                 AlarmScheduler.setCheck(context, then.alarm)
-                settings.setNextCheck(then.alarm)
+                if (alarm.kind == AlarmKind.Start) settings.setNextCheck(then.alarm)
             }
             Then.DayDone -> {
-                settings.setDoneDate(alarm.date)
+                if (alarm.kind == AlarmKind.End) settings.setEndDoneDate(alarm.date) else settings.setDoneDate(alarm.date)
                 replan(context, settings)
             }
             Then.Replan -> replan(context, settings)
@@ -99,7 +103,7 @@ object AlarmWork {
         }
     }
 
-    /** Plans the check alarm again from the cached schedule. Used after the start time setting changes. */
+    /** Plans the check alarms again from the cached schedule. Used after a time or alert setting changes. */
     suspend fun replan(context: Context) = mutex.withLock { replan(context, SettingsStore(context)) }
 
     /** Clears the cookie, the alarms, and the alarm state. */
@@ -123,18 +127,39 @@ object AlarmWork {
             ApiResult.SessionExpired -> return ApiResult.SessionExpired
             is ApiResult.Failed -> return ApiResult.Failed(result.reason)
         }
-        return ApiResult.Success(Decider.decide(day, info, alarm.start, settings.read().manualStart))
+        val state = settings.read()
+        return ApiResult.Success(
+            when (alarm.kind) {
+                AlarmKind.Start -> Decider.decide(day, info, alarm.start, state.manualStart)
+                AlarmKind.End -> Decider.decideEnd(day, info, alarm.start, state.manualEnd)
+            },
+        )
     }
 
     private suspend fun replan(context: Context, settings: SettingsStore) {
         val state = settings.read()
-        val next = AlarmPlan.next(state.days, state.manualStart, LocalDateTime.now(), state.doneDate, state.alerts)
+        val now = LocalDateTime.now()
+        val next = AlarmPlan.next(state.days, state.manualStart, now, state.doneDate, state.alerts)
         if (next != null && AlarmScheduler.setCheck(context, next)) {
             settings.setNextCheck(next)
         } else {
-            AlarmScheduler.cancelCheck(context)
+            AlarmScheduler.cancelCheck(context, AlarmKind.Start)
             settings.setNextCheck(null)
         }
+        val nextEnd = if (state.endOn) {
+            AlarmPlan.nextEnd(state.days, state.manualEnd, now, state.endDoneDate, state.endAlerts)
+        } else {
+            null
+        }
+        if (nextEnd == null || !AlarmScheduler.setCheck(context, nextEnd)) {
+            AlarmScheduler.cancelCheck(context, AlarmKind.End)
+        }
+    }
+
+    /** "checkT-10" for a start alarm, "endT-10", "endT+0" or "endT+30" for an end alarm. */
+    private fun name(alarm: CheckAlarm): String = when (alarm.kind) {
+        AlarmKind.Start -> "checkT-${alarm.minutesBefore}"
+        AlarmKind.End -> "end" + AlarmPlan.label(alarm.minutesBefore)
     }
 
     private suspend fun stop(context: Context, settings: SettingsStore) {

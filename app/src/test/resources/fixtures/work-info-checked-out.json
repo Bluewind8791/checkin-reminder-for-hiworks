@@ -1,0 +1,38 @@
+{
+  "data": {
+    "date": "2026-11-06",
+    "start_at": "2026-11-06 08:48:24",
+    "start_status": 0,
+    "enable_start": "N",
+    "end_at": "2026-11-06 18:01:10",
+    "end_status": 0,
+    "enable_end": "N",
+    "work_status": "근무중",
+    "enable_etc": "Y",
+    "details": [
+      {
+        "id": 1,
+        "time": "2026-11-06 08:48:24",
+        "name": "출근",
+        "title": "출근",
+        "detail_name": "출근",
+        "include_work": "Y",
+        "type": "start",
+        "type_no": null,
+        "check_app": "MESSENGER",
+        "is_outside": false,
+        "is_temp": false,
+        "is_remote": false,
+        "location": {
+          "place_name": null,
+          "latitude": null,
+          "longitude": null
+        },
+        "status": 0,
+        "status_name": "NORMAL"
+      }
+    ],
+    "use_start_check": "Y",
+    "use_end_check": "Y"
+  }
+}

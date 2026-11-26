@@ -7,14 +7,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-/** Runs the keepalive call and the check stages when their alarms ring. */
+/** Runs the keepalive call and the start and end check stages when their alarms ring. */
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext
         runAsync {
             when (intent.action) {
                 AlarmScheduler.ACTION_KEEPALIVE -> AlarmWork.keepAlive(app)
-                AlarmScheduler.ACTION_CHECK -> AlarmScheduler.checkAlarm(intent)?.let { AlarmWork.check(app, it) }
+                AlarmScheduler.ACTION_CHECK, AlarmScheduler.ACTION_END_CHECK ->
+                    AlarmScheduler.checkAlarm(intent)?.let { AlarmWork.check(app, it) }
             }
         }
     }

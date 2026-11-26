@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -39,7 +40,7 @@ import io.github.bluewind8791.checkinreminder.BuildConfig
 import io.github.bluewind8791.checkinreminder.ui.theme.JetBrainsMono
 import io.github.bluewind8791.checkinreminder.ui.theme.Palette
 
-enum class MainTab { Start, Settings }
+enum class MainTab { Start, End, Settings }
 
 enum class UpdateCheck { Idle, Busy, Latest }
 
@@ -79,6 +80,13 @@ fun Dock(
                 selected = tab == MainTab.Start,
                 badge = if (checkedIn) Palette.green to "출근 확인됨" else null,
                 onClick = { onTab(MainTab.Start) },
+            )
+            DockTab(
+                AppIcons.logOut,
+                "퇴근",
+                selected = tab == MainTab.End,
+                badge = null,
+                onClick = { onTab(MainTab.End) },
             )
             DockTab(
                 AppIcons.settings,
@@ -144,6 +152,34 @@ private fun DockTab(
                     .semantics { contentDescription = badge.second },
             )
         }
+    }
+}
+
+/** 「퇴근 알림 ON」 or 「퇴근 알림 OFF」. Tapping it turns the end alerts on or off. */
+@Composable
+fun EndToggle(on: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(20.dp)
+    val color = if (on) Palette.key else Palette.textSub
+    Row(
+        Modifier
+            .height(40.dp)
+            .clip(shape)
+            .background(if (on) Palette.brandTint else Palette.card, shape)
+            .border(if (on) 1.5.dp else 1.dp, if (on) Palette.brand else Palette.border, shape)
+            .toggleable(value = on, role = Role.Switch, onValueChange = { onClick() })
+            .padding(start = 12.dp, end = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(if (on) AppIcons.bell else AppIcons.bellOff, contentDescription = null, modifier = Modifier.size(16.dp), tint = color)
+        Spacer(Modifier.width(6.dp))
+        Text("퇴근 알림 ", fontSize = 13.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = color)
+        Text(
+            if (on) "ON" else "OFF",
+            fontFamily = JetBrainsMono,
+            fontSize = 13.sp,
+            fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+            color = color,
+        )
     }
 }
 

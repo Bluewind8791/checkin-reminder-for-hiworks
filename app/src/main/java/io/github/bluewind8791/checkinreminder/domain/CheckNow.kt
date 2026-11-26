@@ -8,18 +8,28 @@ import java.time.LocalTime
 sealed interface CheckResult {
     data class Ok(
         val date: LocalDate,
-        val expected: ExpectedStart,
+        val expected: ExpectedTime,
         val checkedIn: Boolean,
         /** Null when not checked in, or when the record has no time. */
         val checkedInAt: LocalTime?,
+        val expectedEnd: ExpectedTime,
+        /** Null when not checked out. */
+        val checkedOutAt: LocalTime?,
+        /** False when the company does not use the check-out. */
+        val usesEndCheck: Boolean,
     ) : CheckResult
 
     data object SessionExpired : CheckResult
     data class Failed(val reason: String) : CheckResult
 }
 
-/** Looks up today's schedule and check-in state once. Used by the 「지금 확인」 button. */
-suspend fun checkNow(client: HiworksClient, today: LocalDate, manualStart: LocalTime? = null): CheckResult {
+/** Looks up today's schedule and check-in and check-out state once. Used by the 「지금 확인」 button. */
+suspend fun checkNow(
+    client: HiworksClient,
+    today: LocalDate,
+    manualStart: LocalTime? = null,
+    manualEnd: LocalTime? = null,
+): CheckResult {
     val days = when (val result = client.calendar(today, today)) {
         is ApiResult.Success -> result.value
         ApiResult.SessionExpired -> return CheckResult.SessionExpired
@@ -37,5 +47,8 @@ suspend fun checkNow(client: HiworksClient, today: LocalDate, manualStart: Local
         expected = Decider.expectedStart(day, manualStart),
         checkedIn = Decider.isCheckedIn(info),
         checkedInAt = Decider.checkInTime(info),
+        expectedEnd = Decider.expectedEnd(day, manualEnd),
+        checkedOutAt = Decider.checkOutTime(info),
+        usesEndCheck = Decider.usesEndCheck(info),
     )
 }

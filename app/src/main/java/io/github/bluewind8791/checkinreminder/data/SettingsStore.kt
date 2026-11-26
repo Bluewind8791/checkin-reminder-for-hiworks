@@ -35,6 +35,14 @@ data class Settings(
     val lastCallResult: String? = null,
     /** The first-run setup is over, or the app was already in use when the setup came. */
     val setupDone: Boolean = false,
+    /** The end alerts are on. Off until the user turns them on. */
+    val endOn: Boolean = false,
+    /** The end time the user typed. Null means the work schedule's `plan_end_at`. */
+    val manualEnd: LocalTime? = null,
+    /** Minutes before the end time of each end alarm, largest first. Negative is after the end time. */
+    val endAlerts: List<Long> = AlarmPlan.DEFAULT_END_ALERTS,
+    /** The last date whose end alarms are over. */
+    val endDoneDate: LocalDate? = null,
 )
 
 /** Settings and alarm state. Holds no secret: the cookie is in [CookieStore]. */
@@ -53,6 +61,18 @@ class SettingsStore(context: Context) {
         it[ALERTS] = alerts.sortedDescending().joinToString(",")
         it.remove(FIRST_MINUTES)
     }
+
+    suspend fun setEndOn(on: Boolean) = dataStore.edit { it[END_ON] = on }
+
+    suspend fun setManualEnd(time: LocalTime?) = dataStore.edit {
+        if (time == null) it.remove(MANUAL_END) else it[MANUAL_END] = time.toString()
+    }
+
+    suspend fun setEndAlerts(alerts: List<Long>) = dataStore.edit {
+        it[END_ALERTS] = alerts.sortedDescending().joinToString(",")
+    }
+
+    suspend fun setEndDoneDate(date: LocalDate) = dataStore.edit { it[END_DONE_DATE] = date.toString() }
 
     suspend fun setDays(days: List<CalendarDay>) = dataStore.edit {
         it[DAYS] = json.encodeToString(DAYS_SERIALIZER, days)
@@ -85,11 +105,17 @@ class SettingsStore(context: Context) {
         val alerts = prefs[ALERTS]
         val firstMinutes = prefs[FIRST_MINUTES]
         val setupDone = prefs[SETUP_DONE]
+        val endOn = prefs[END_ON]
+        val manualEnd = prefs[MANUAL_END]
+        val endAlerts = prefs[END_ALERTS]
         prefs.clear()
         if (manualStart != null) prefs[MANUAL_START] = manualStart
         if (alerts != null) prefs[ALERTS] = alerts
         if (firstMinutes != null) prefs[FIRST_MINUTES] = firstMinutes
         if (setupDone != null) prefs[SETUP_DONE] = setupDone
+        if (endOn != null) prefs[END_ON] = endOn
+        if (manualEnd != null) prefs[MANUAL_END] = manualEnd
+        if (endAlerts != null) prefs[END_ALERTS] = endAlerts
     }
 
     private fun Preferences.toSettings() = Settings(
@@ -105,6 +131,11 @@ class SettingsStore(context: Context) {
         lastCallAt = parse(this[LAST_CALL_AT], LocalDateTime::parse),
         lastCallResult = this[LAST_CALL_RESULT],
         setupDone = this[SETUP_DONE] ?: false,
+        endOn = this[END_ON] ?: false,
+        manualEnd = parse(this[MANUAL_END], LocalTime::parse),
+        endAlerts = this[END_ALERTS]?.split(",")?.mapNotNull { it.toLongOrNull() }.orEmpty()
+            .ifEmpty { AlarmPlan.DEFAULT_END_ALERTS },
+        endDoneDate = parse(this[END_DONE_DATE], LocalDate::parse),
     )
 
     /** A value this class wrote. Null when it is missing or does not parse, so a bad value never crashes the app. */
@@ -124,6 +155,10 @@ class SettingsStore(context: Context) {
         val LAST_CALL_AT = stringPreferencesKey("last_call_at")
         val LAST_CALL_RESULT = stringPreferencesKey("last_call_result")
         val SETUP_DONE = booleanPreferencesKey("setup_done")
+        val END_ON = booleanPreferencesKey("end_on")
+        val MANUAL_END = stringPreferencesKey("manual_end")
+        val END_ALERTS = stringPreferencesKey("end_alerts")
+        val END_DONE_DATE = stringPreferencesKey("end_done_date")
 
         val DAYS_SERIALIZER = ListSerializer(CalendarDay.serializer())
         val json = Json { ignoreUnknownKeys = true }

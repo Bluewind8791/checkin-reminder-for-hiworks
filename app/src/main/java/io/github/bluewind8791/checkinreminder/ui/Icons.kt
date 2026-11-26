@@ -23,6 +23,14 @@ object AppIcons {
         "M9 12a3 3 0 1 0 6 0a3 3 0 1 0 -6 0",
     )
     val refresh = lucide("refresh", "M21 12a9 9 0 1 1-3-6.7L21 8", "M21 3v5h-5")
+    val bell = lucide("bell", "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9", "M10.3 21a1.94 1.94 0 0 0 3.4 0")
+    val bellOff = lucide(
+        "bell-off",
+        "M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5",
+        "M17 17H3s3-2 3-9a4.67 4.67 0 0 1 .3-1.7",
+        "M10.3 21a1.94 1.94 0 0 0 3.4 0",
+        "m2 2 20 20",
+    )
 }
 
 private fun lucide(name: String, vararg paths: String): ImageVector =
